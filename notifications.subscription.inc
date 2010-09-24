@@ -799,7 +799,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function get_instance($params = array(), $return_self = FALSE) {
     $params += array('type' => $this->type);
-    $cache = &messaging_static('Notifications_Subscription_instances');
+    $cache = &drupal_static('Notifications_Subscription_instances');
     $cache_key = notifications_array_serialize($params);
     if (!isset($cache[$cache_key])) {
       $subs = notifications_get_subscriptions($params);

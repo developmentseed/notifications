@@ -65,7 +65,7 @@ function notifications_admin_status_page() {
       $stype->count);
     $count += $stype->count;
   }
-  $summary = theme('table', $header, $rows);
+  $summary = theme('table', array('header' => $header, 'rows' =>$rows));
   $summary .= t('Total: %number', array('%number' => $count));
   $output .= theme('box', t('Subscriptions by type'), $summary);
   
@@ -79,7 +79,7 @@ function notifications_admin_status_page() {
       $name ? $name : '<strong>' . $subs->send_method . '</strong>' , 
       $subs->count);
   }
-  $summary = theme('table', $header, $rows);
+  $summary = theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= theme('box', t('Subscriptions by send method'), $summary); 
 
   return $output;  
@@ -334,7 +334,7 @@ function notifications_admin_subscriptions_settings() {
 function notifications_admin_subscriptions_settings_submit($form, &$form_state) {
   // Submission may have been Save or Reset to defaults, so we cannot really trust submitted values
   // Instead we do a cache refresh and re-check enabled / disabled types
-  messaging_static_reset('notifications_subscription_type_enabled');
+  drupal_static_reset('notifications_subscription_type_enabled');
   $types = notifications_subscription_type_enabled();
   $sql_update = 'UPDATE {notifications} SET status = %d WHERE status = %d';
   $enabled = $disabled = 0;
@@ -382,8 +382,8 @@ function theme_notifications_send_intervals_form($element) {
       drupal_render($element['default'][$key]),
     );  
   }
-  $element['intervals']['#value'] = theme('table', $header, $rows);
-  //$output .= theme('table', $header, $rows);
+  $element['intervals']['#value'] = theme('table', array('header' => $header, 'rows' =>$rows));
+  //$output .= theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($element);
   return $output;
 }
@@ -454,7 +454,7 @@ function notifications_admin_events_tree_form($tree, &$form, $depth = 0) {
  * Plain list of template names
  */
 function notifications_template_list() {
-  $list = &messaging_static(__FUNCTION__);
+  $list = &drupal_static(__FUNCTION__);
   if (!isset($list)) {
     notifications_include('templates.inc');
     foreach (notifications_get_templates() as $key => $template) {
@@ -479,7 +479,7 @@ function theme_notifications_form_table($element) {
       }
       $rows[] = $row;
     }
-    $output .= theme('table', $header, $rows);
+    $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   }
   $output .= drupal_render($element);
   return $output;

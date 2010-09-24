@@ -262,7 +262,7 @@ function notifications_tags_form_alter(&$form, $form_state, $form_id) {
  *   If empty the whole vocalubary object will be returned.
  */
 function notifications_tags_vocabularies($field = NULL) {
-  $vocabularies = &messaging_static(__FUNCTION__);
+  $vocabularies = &drupal_static(__FUNCTION__);
   if (!isset($vocabularies)) {
     $vocabularies = array();
     if ($allowed = variable_get('notifications_tags_vocabularies', array())) {

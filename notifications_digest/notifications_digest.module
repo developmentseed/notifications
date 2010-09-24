@@ -131,7 +131,7 @@ function notifications_digest_event_info($event, $module = 'notifications') {
  *   Event object or event type key
  */
 function notifications_digest_event_template($event) {
-  $info = &messaging_static(__FUNCTION__);
+  $info = &drupal_static(__FUNCTION__);
   if (!isset($info)) {
     $info = variable_get('notifications_digest_template', array());
   }  

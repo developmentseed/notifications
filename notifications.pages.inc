@@ -167,7 +167,6 @@ function notifications_page_unsubscribe_overview() {
   global $user;
   notifications_include('destination.inc');
 
-  //drupal_set_title(t('Unsubscribe'));
   $output = '';
   $send_methods = notifications_destination_anonymous_methods();
   $subscriptions = 0;
@@ -805,7 +804,7 @@ function theme_notifications_subscription_fields($elements) {
       drupal_render($elements['value'][$key]),
     );
   }
-  $output = theme('table', $header, $rows);
+  $output = theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($elements);
   return $output;
 }
@@ -830,7 +829,7 @@ function theme_notifications_table_form($form) {
   }
 
   if ($rows) {
-    $output .= theme('table', $header, $rows);
+    $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   } else {
     $output .= '<p>' . t('No elements') . '</p>';
   }

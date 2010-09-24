@@ -141,7 +141,7 @@ function notifications_ui_subscription_types($type = NULL, $field = NULL) {
     $types = notifications_array_filter($types, array('custom' => TRUE), TRUE);
   }
   
-  return notifications_array_info($types, $type, $field);
+  return messaging_array_info($types, $type, $field);
 }
 
 /**

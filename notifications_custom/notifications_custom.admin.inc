@@ -35,7 +35,7 @@ function notifications_custom_admin_page($op = NULL) {
           implode(' | ', $ops),
         );
       }
-      $output .= theme('table', $header, $rows);
+      $output .= theme('table', array('header' => $header, 'rows' =>$rows));
     }
     else {
       $output .= '<p>'. t('There are no custom subscriptions defined.') .'</p>';
@@ -332,7 +332,7 @@ function theme_notifications_custom_fields($elements) {
       drupal_render($elements['edit'][$key]),
     );
   }
-  $output = theme('table', $header, $rows);
+  $output = theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($elements);
   return $output;
 }

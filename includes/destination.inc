@@ -96,7 +96,7 @@ function notifications_destination_method_subform($account, $send_method = NULL,
 function notifications_destination_address_subform($account, $destination = NULL, $send_methods = NULL, $size = 40) {
   $send_methods = isset($send_methods) ? $send_methods : notifications_send_methods($account);
   if (!$send_methods) {
-    $form['warning']['#value'] = '<p>' . t('No sending methods available.') . '</p>';
+    $form['warning']['#markup'] = '<p>' . t('No sending methods available.') . '</p>';
     return $form;
   }
   // Get address types for all these methods, without duplicates

@@ -209,7 +209,7 @@ function _notifications_content_test_format_template($parts) {
     }
     $rows[] = $row;
   }
-  return theme('table', $header, $rows);
+  return theme('table', array('header' => $header, 'rows' =>$rows));
 }
 /**
  * Theme content type settings
@@ -228,7 +228,7 @@ function theme_notifications_content_type_settings(&$elements) {
     }
     $rows[] = $row;
   }
-  $output .= theme('table', $header, $rows);
+  $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($elements);
   return $output;
 }

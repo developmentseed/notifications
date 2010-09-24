@@ -557,7 +557,7 @@ function theme_notifications_manage_subscriptions($form) {
     $rows[] = array(array('data' => t('No subscriptions available.'), 'colspan' => '6'));
   }
 
-  $output .= theme('table', $header, $rows);
+  $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   if ($form['pager']['#value']) {
     $output .= drupal_render($form['pager']);
   }

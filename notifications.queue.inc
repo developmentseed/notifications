@@ -155,7 +155,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    * Delete a queue and every item in the queue.
    */
   public function deleteQueue() {
-    db_delete('queue')
+    db_delete('notifications_queue')
       ->condition('name', $this->name)
       ->execute();  
   }

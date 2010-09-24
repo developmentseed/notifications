@@ -109,7 +109,7 @@ function theme_notifications_ui_subscription_types(&$elements) {
       drupal_render($elements[$key]['create']),
     );
   }
-  $output .= theme('table', $header, $rows);
+  $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($elements);
   return $output;
 }
@@ -128,7 +128,7 @@ function theme_notifications_ui_content_types(&$elements) {
     }
     $rows[] = $row;
   }
-  $output .= theme('table', $header, $rows);
+  $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   $output .= drupal_render($elements);
   return $output;
 }

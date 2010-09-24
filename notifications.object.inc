@@ -6,6 +6,27 @@
  */
 
 /**
+ * Base class for all Notifications objects
+ */
+abstract class Notifications_Object {
+  /**
+   * Constructor
+   */
+  public function __construct($template = NULL) {
+    if ($template) {
+      $properties = (array)$template;
+      foreach ($properties as $key => $value) {
+        $this->$key = $value;
+      }
+    }    
+  }
+  /**
+   * They need a build function
+   */
+  public static abstract function build_object($object);
+}
+
+/**
  * Wrapper for Drupal objects
  */
 class Notifications_Drupal_Object {
@@ -180,7 +201,7 @@ function notifications_object_access($type, $object, $account) {
     return FALSE;
   }
   elseif (($info = notifications_object_type($type)) && ($key = $info['key_field']) && isset($object->$key)) {
-    $access = &messaging_static(__FUNCTION__);
+    $access = &drupal_static(__FUNCTION__);
     if (!isset($access[$type][$account->uid][$object->$key])) {
       if (isset($info['access callback'])) {
         $access[$type][$account->uid][$object->$key] = _notifications_object_callback($type, 'access callback', $object, $account);
@@ -263,7 +284,7 @@ function notifications_object_condition_fields($type, $object) {
  *   The enabled ones will have a 'subscriptions' element loaded
  */
 function notifications_object_user_subscriptions($type, $object, $account = NULL) {
-  $cache = &messaging_static(__FUNCTION__);
+  $cache = &drupal_static(__FUNCTION__);
   $account = $account ? $account : $GLOBALS['user'];
   $object = notifications_object_load($type, $object);
   
@@ -309,7 +330,7 @@ function notifications_object_user_subscriptions($type, $object, $account = NULL
  * Get objects to which we can subscribe on current page
  */
 function notifications_object_page_objects() {
-  $objects = &messaging_static(__FUNCTION__);
+  $objects = &drupal_static(__FUNCTION__);
   if (!isset($objects)) {
     $objects = messaging_module_invoke_all('notifications_subscription', 'page objects');
   }

@@ -141,7 +141,7 @@ function notifications_anonymous_destination_method($destination) {
  * Get available sending methods for anonymous users
  */
 function notifications_anonymous_send_methods() {
-  $list = &messaging_static(__FUNCTION__);
+  $list = &drupal_static(__FUNCTION__);
   if (!isset($list)) {
     $list = array();
     $allowed = variable_get('notifications_anonymous_send_methods', array('mail'));
@@ -158,7 +158,7 @@ function notifications_anonymous_send_methods() {
  * Get available send intervals for anonymous users
  */
 function notifications_anonymous_send_intervals() {
-  $list = &messaging_static(__FUNCTION__);
+  $list = &drupal_static(__FUNCTION__);
   if (!isset($list)) {
     $list = array();
     $allowed = variable_get('notifications_anonymous_send_intervals', array(0));

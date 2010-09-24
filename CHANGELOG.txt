@@ -282,7 +282,7 @@
 - Fixed Notifications cron processing records ignoring module name by Brian Neisler, http://drupal.org/node/244571
 - Implemented notifications sender option, see http://drupal.org/node/227377
 - Resolved naming conflict with other modules by Lynn, http://drupal.org/node/232610
-- Rewritten notifications_load_user() to use messaging_load_user() so they share caching
+- Rewritten notifications_load_user() to use user_load() so they share caching
 - Added back 'Never' send interval.
 - Subscriptions fields not mandatory anymore, http://drupal.org/node/237972
 - Improved digesting format for new posts, http://drupal.org/node/218745

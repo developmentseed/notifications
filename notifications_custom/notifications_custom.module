@@ -11,15 +11,6 @@
  */
 
 /**
- * Implementation of hook_autoload_info().
- */
-function notifications_custom_autoload_info() {
-  return array(
-    'Notifications_Custom_Subscription' => array('file' => 'notifications_custom.class.inc'),
-  );
-}
-
-/**
  * Implementation of hook_enable().
  */
 function notifications_custom_enable() {
@@ -283,7 +274,7 @@ function notifications_custom_build_list($filter = array(), $account = NULL) {
  * Get all custom subscriptions by type
  */
 function notifications_custom_list() {
-  $cache = &messaging_static(__FUNCTION__);
+  $cache = &drupal_static(__FUNCTION__);
   if (!isset($cache)) {
     $cache = array();
     $result = db_query("SELECT * FROM {notifications_custom} ORDER BY weight");
@@ -338,7 +329,7 @@ function notifications_custom_delete($type, $instances = FALSE) {
  *   It may be csid (integer) or type (string)
  */
 function notifications_custom_load($key) {
-  $cache = &messaging_static(__FUNCTION__);
+  $cache = &drupal_static(__FUNCTION__);
   if (!isset($cache[$key])) {
     $where = is_numeric($key) ? 'csid = %d' : "type = '%s'";
     $template = db_fetch_object(db_query('SELECT * FROM {notifications_custom} WHERE ' . $where , $key));

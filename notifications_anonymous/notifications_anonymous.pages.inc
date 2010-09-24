@@ -59,7 +59,7 @@ function notifications_anonymous_destination_page($destination, $op = 'unsubscri
     drupal_access_denied();
     exit(0);
   }
-  drupal_set_title(t('Subscriptions for @name', array('@name' => $destination->address_name())));
+  drupal_set_title(t('Subscriptions for @name', array('@name' => $destination->address_name())), PASS_THROUGH);
   $options = notifications_anonymous_manage_links('destination', $destination, 'link');
   switch ($op) {
     case 'edit':
