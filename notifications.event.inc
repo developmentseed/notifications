@@ -5,13 +5,11 @@
  * Drupal Notifications Framework - Default class file
  */
 
+
 /**
  * Message destination class
  */
-class Notifications_Event extends Messaging_Cached_Object {
-  // Database properties
-  const DB_TABLE = 'notifications_event';
-  const DB_KEY = 'eid';
+class Notifications_Event extends NotificationsObject {
   // Object unique id
   public $eid;
   public $module = 'notifications';
@@ -46,16 +44,16 @@ class Notifications_Event extends Messaging_Cached_Object {
   // Shared template map for all events
   protected static $_templates;
 
-  // Track events for immediate sending
-  protected static $_send_immediate;
-  // Track events for queue processing
-  protected static $_event_tracker;
-
   /**
    * Constructor
    */
-  function __construct($object = NULL) {
-    parent::__construct($object);
+  function __construct($template = NULL) {
+    if ($template) {
+      $properties = (array)$template;
+      foreach ($properties as $key => $value) {
+        $this->$key = $value;
+      }
+    }
     if (!isset($this->created)) {
       $this->created = time();
     }
@@ -64,10 +62,24 @@ class Notifications_Event extends Messaging_Cached_Object {
     }
   }
   /**
-   * Building function
+   * Build Event Object
    */
-  public static function build($template) {
-    return new Notifications_Event($template);
+  public static function build_object($template) {
+    $class = notifications_event_type($template->type, 'class', 'Notifications_Event');
+    return new $class($template);
+  }
+  /**
+   * Load event by id
+   */
+  public static function load($eid) {
+    $event = entity_load('notifications_event', array($eid));
+    return $event ? $event[$eid] : FALSE;
+  }
+  /**
+   * Load multiple events
+   */
+  public static function load_multiple($eids = array(), $conditions = array()) {
+    return entity_load('notifications_event', $eids, $conditions);
   }
   /**
    * Get event type information
@@ -350,23 +362,6 @@ class Notifications_Event extends Messaging_Cached_Object {
   public static function queue_clean($update = FALSE) {
     return notifications_queue()->event_clean($update);
   }
-  
-  /**
-   * Load by id passing through notifications_event() hook
-   * 
-   * Replaces notifications_event_load($id)
-   */
-  public static function load($id) {
-    $cached = self::cache_get($id);
-    if (isset($cached)) {
-      return $cached;
-    }
-    elseif ($event = self::object_load(self::DB_TABLE, self::DB_KEY, $id, 'Notifications_Event')) {
-      // Inform other modules, give them the chance to alter
-      module_invoke_all('notifications_event', 'load', $event);
-      return $event;
-    }
-  }
 
   /**
    * Unserialize after db loading
@@ -389,22 +384,6 @@ class Notifications_Event extends Messaging_Cached_Object {
     }
     db_query('UPDATE {notifications_event} SET counter = %d WHERE eid = %d', $this->counter, $this->eid);
   }
-  // Store into cache
-  public static function cache_set($key, $object) {
-    return self::object_cache_set('Notifications_Event', $key, $object);
-  }
-  // Get from cache
-  public static function cache_get($key) {
-    return self::object_cache_get('Notifications_Event', $key);
-  }
-  // Get table name for storage
-  public static function db_table() {
-    return self::DB_TABLE;
-  }
-  // Get key field name for storage
-  public static function db_key() {
-    return self::DB_KEY;
-  }
 
   /**
    * Track events and keep them updated
@@ -418,26 +397,46 @@ class Notifications_Event extends Messaging_Cached_Object {
    * Add event to be tracked
    */
   public function track() {
-    self::$_event_tracker[$this->eid] = $this;
+    Notifications_Event_Tracker::track($this);
   }
   
-  // Load and add to the tracker
+  /**
+   * Load and add to the tracker
+   */ 
   public static function track_load($eid) {
-    if (($event = Notifications_Event::load($eid)) && $event->load_objects() && empty($event->delete)) {
+    if (($event = self::load($eid)) && $event->load_objects() && empty($event->delete)) {
       $event->track_count();
       $event->track();
       return $event;
     }    
   }
+  
+}
+
+/**
+ * Event tracker
+ */
+class Notifications_Event_Tracker {
+  // Track events for immediate sending
+  protected static $_send_immediate;
+  // Track events for queue processing
+  protected static $_event_tracker;
+
+  /**
+   * Add event to be tracked
+   */
+  public function track($event) {
+    self::$_event_tracker[$event->eid] = $event;
+  }
 
   // Delete event and all related rows
-  public static function track_delete($event) {
-    unset($this->tracker[$event->eid]);
+  public static function delete($event) {
+    unset(self::$_event_tracker[$event->eid]);
     $event->delete();
   }
 
   // Update tracked events counter or delete if counter reached zero or marked for deletion.
-  public static function track_update() {
+  public static function update() {
     if (!empty(self::$_event_tracker)) {
       foreach (self::$_event_tracker as $eid => $event) {
         if (!$event->counter || $event->incomplete || !empty($event->delete)) {
@@ -450,11 +449,9 @@ class Notifications_Event extends Messaging_Cached_Object {
       }
     }
   }
-  // Reset tracked event list
-  public function track_reset() {
-    self::$_event_tracker = array();
+  static function reset() {
+    self::$_event_tracker = array();    
   }
-  
   /**
    * Store / return events for immediate sending
    */

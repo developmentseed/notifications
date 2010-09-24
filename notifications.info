@@ -2,7 +2,8 @@
 name = Notifications
 description = The basic notifications framework
 package = "Notifications"
+version = VERSION
+core = 7.x
 dependencies[] = messaging
 dependencies[] = messaging_template
-core = 6.x
-php = 5.0
+

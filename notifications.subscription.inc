@@ -6,22 +6,10 @@
  */
 
 /**
- * Message destination class
+ * Common base for subscription type and subscription instance
  */
-class Notifications_Subscription extends Messaging_Object {
-  // Database properties
-  const DB_TABLE = 'notifications';
-  const DB_KEY = 'sid';
-  // Blocked subscriptions, for blocked users
-  const STATUS_BLOCKED = 0;
-  // Enabled ones, will produce notifications
-  const STATUS_ACTIVE = 1;
-  // Temporarily disabled ones, maybe user on holidays
-  const STATUS_INACTIVE = 2;
-  // Disabled because the subscription type is disabled
-  const STATUS_DISABLED = -1;
-
-  // Format as plaintext. Note it evaluates to false.
+class Notifications_Subscription extends NotificationsObject {
+    // Format as plaintext. Note it evaluates to false.
   const FORMAT_PLAIN = 0;
   // Format as html. Note it evaluates to true
   const FORMAT_HTML = 1;
@@ -31,106 +19,62 @@ class Notifications_Subscription extends Messaging_Object {
   const FORMAT_TABLE = 5;
   // Format as item list (8 + 2(inline) + 1 (html))
   const FORMAT_LIST = 10;
-  
-  // This class inherits some properties from Messaging_Object
-  // public $uid;
-  // public $language;
-  
-  // Unique subscription id
-  public $sid = 0;
-  // Destination id
-  public $mdid;
-  // Subscription type
-  public $type;
-  // Event that triggers this subscription
-  public $event_type;
-  // Number of conditions that must be met
-  public $conditions;
-  // Values to pass on to the queue for composition
-  public $send_interval;
-  public $send_method;
-  public $cron = 1;
-  public $module = 'notifications';
-  // Subscription status, defaults to active
-  public $status = 1;
-  // The address for the destination (Unused, just for logging. To be obsoleted)
-  public $destination = '';
   // Subscription fields
   protected $fields;
 
-  // Temporary variables, not saved to the DB
-  protected $destination_object;
-  protected $format;
-  protected $objects;
-  // Name for this subscription that will be quite dependent on context
-  public $name;
-  // Mark if incomplete loading of objects
-  public $incomplete;
-  // Mark when editable
-  public $editable;
-  // Temporary error message, to display when validation fails
-  public $error_message;
-  
   /**
    * Class constructor
    */
-  function __construct($object = NULL) {
-    $this->status = self::STATUS_ACTIVE;
-    if ($object) {
-      $properties = (array)$object;
+  function __construct($template = NULL) {
+    if ($template) {
+      $properties = (array)$template;
       foreach ($properties as $key => $value) {
-        // Set old fields format (array of field => value)
-        if ($key == 'fields' || $key == 'destination') {
-          $this->__set($key, $value);
-        }
-        else {
-          $this->$key = $value;
-        }
+        $this->$key = $value;
       }
     }
-    // Default values for new objects
-    if (empty($this->sid)) {
-      $this->created = time();
-      // Set some properties from subscription type
-      if (!empty($this->type) && ($defaults = notifications_subscription_types($this->type))) {
-        foreach (array('event_type', 'module', 'cron', 'conditions') as $field) {
-          $value = notifications_subscription_types($this->type, $field);
-          if (!isset($properties[$field]) && isset($defaults[$field])) {
-            $this->$field =  $defaults[$field];
-          }          
-        }
-      }
-
-    }
+  }
+  public function get_fields() {
+    return array();
   }
   /**
-   * Build for a subscription type
-   * 
-   * @param $template
-   *   Template object or subscription type
+   * Build from form submission
    */
-  public static function build($template, $default_class = 'Notifications_Subscription') {
-    if (is_array($template)) {
-      $type = NULL;
-      $template = (object)$template;
+  public static function build_submission(&$form_state) {
+    // The object may be already created ir it may be an array so we use this function that handles that
+    $subscription = notifications_build_subscription($form_state['values']['subscription']);
+    // There may be optional fields to add
+    if (!empty($form_state['values']['subscription_fields'])) {
+      $subscription->set_properties($form_state['values'], array_unique($form_state['values']['subscription_fields']));
     }
-    if (is_object($template)) {
-      $object = $template;
-      $type = $template->type;
-    } 
-    else {
-      $type = $template;
-      $object = array('type' => $type);
-    }
-    // The type may define its own class
-    if ($type && ($class = notifications_subscription_types($type, 'class'))) {
-      return new $class($object);
-    }
-    else {
-      return new $default_class($object);
+    return $subscription;
+  }
+  
+  /**
+   * Save fields from form submission
+   */
+  public function set_properties($values, $fields) {
+    foreach ($fields as $key) {
+      if (isset($values[$key])) {
+        switch ($key) {
+          case 'fields':
+            if (!empty($values['parsed_fields'])) {
+              $this->set_fields($values['parsed_fields']);
+            }
+            else {
+              $this->set_fields($values['fields']);
+            }
+            break;
+          case 'destination':
+            $this->set_destination($values[$key]);
+            break;
+          default:
+            $this->$key = $values[$key];
+            break;         
+        }
+      }
     }
   }
-
+ 
   /**
   * Validate form submission
   */
@@ -171,46 +115,155 @@ class Notifications_Subscription extends Messaging_Object {
       }
     }
   }
+  
+}
+
+/**
+ * Subscription type
+ */
+class Notifications_Subscription_Type extends Notifications_Subscription {
+  // Subscription type name
+  public $type;
+  // Instance class
+  public $instance = 'Notifications_Subscription_Instance';
+  // Event that triggers this subscription
+  public $event_type;
+  // Condition fields
+  public $conditions;
 
   /**
-   * Build from form submission
+   * Build subscription type
    */
-  public static function build_submission(&$form_state) {
-    // The object may be already created ir it may be an array so we use this function that handles that
-    $subscription = notifications_build_subscription($form_state['values']['subscription']);
-    // There may be optional fields to add
-    if (!empty($form_state['values']['subscription_fields'])) {
-      $subscription->set_properties($form_state['values'], array_unique($form_state['values']['subscription_fields']));
-    }
+  public static function build_type($type) {
+    $info = notifications_subscription_type($type);
+    $class = !empty($info['class']) ? $info['class'] : 'Notifications_Subscription_Type';
+    $subscription = new $class($info);
+    $subscription->type = $type;
     return $subscription;
   }
-  
   /**
-   * Save fields from form submission
+   * Build instance of this type
    */
-  public function set_properties($values, $fields) {
-    foreach ($fields as $key) {
-      if (isset($values[$key])) {
-        switch ($key) {
-          case 'fields':
-            if (!empty($values['parsed_fields'])) {
-              $this->set_fields($values['parsed_fields']);
-            }
-            else {
-              $this->set_fields($values['fields']);
-            }
-            break;
-          case 'destination':
-            $this->set_destination($values[$key]);
-            break;
-          default:
-            $this->$key = $values[$key];
-            break;         
-        }
+  public function build_instance($object) {
+    $class = $this->instance;
+    $subscription = new $class($object);
+    $subscription->type = $this->type;
+    return $subscription;
+  }
+  /**
+   * Get field types. The order is important as it will determine the field index
+   */
+  function field_types() {
+    return array();
+  }
+  /**
+   * Get object types
+   */
+  function object_types() {
+    return array();
+  }
+  /**
+   * Get fields as array of field objects
+   */
+  function get_fields() {
+    if (!isset($this->fields)) {
+      $this->set_fields();
+    }
+    return $this->fields;
+  }
+  /**
+   * Set fields
+   */
+  function set_fields($fields = NULL) {
+    if ($fields) {
+      foreach ($fields as $field) {
+        $field->subscription = $this;
+        $this->fields[$field->index] = $field;
       }
     }
   }
+}
+
+/**
+ * Notifications Subscription instance
+ */
+class Notifications_Subscription_Instance extends Notifications_Subscription {
+  // Blocked subscriptions, for blocked users
+  const STATUS_BLOCKED = 0;
+  // Enabled ones, will produce notifications
+  const STATUS_ACTIVE = 1;
+  // Temporarily disabled ones, maybe user on holidays
+  const STATUS_INACTIVE = 2;
+  // Disabled because the subscription type is disabled
+  const STATUS_DISABLED = -1;
+
+  // This class inherits some properties from Messaging_Object
+  // public $uid;
+  // public $language;
   
+  // Unique subscription id
+  public $sid = 0;
+  // Destination id
+  public $mdid;
+  // Subscription type
+  public $type;
+  // Event that triggers this subscription
+  public $event_type;
+  // Number of conditions that must be met
+  public $conditions;
+  // Values to pass on to the queue for composition
+  public $send_interval;
+  public $send_method;
+  public $cron = 1;
+  public $module = 'notifications';
+  // Subscription status, defaults to active
+  public $status = 1;
+  // The address for the destination (Unused, just for logging. To be obsoleted)
+  public $destination = '';
+
+
+  // Temporary variables, not saved to the DB
+  protected $destination_object;
+  protected $format;
+  protected $objects;
+  // Name for this subscription that will be quite dependent on context
+  public $name;
+  // Mark if incomplete loading of objects
+  public $incomplete;
+  // Mark when editable
+  public $editable;
+  // Temporary error message, to display when validation fails
+  public $error_message;
+  
+  /**
+   * Class constructor
+   */
+  function __construct($object = NULL) {
+    parent::__construct($object);  
+    // Default values for new objects
+    if (empty($this->sid)) {
+      $this->status = self::STATUS_ACTIVE;
+      $this->created = time();
+    }
+  }
+  /**
+   * Build from type, template
+   */
+  public static function build_type($type, $template = NULL) {
+    return notifications_subscription($type)->build_instance($template);
+  }
+  /**
+   * Build for a subscription type
+   * 
+   * @param $template
+   *   Template object or subscription type
+   */
+  public static function build_object($template) {
+    return notifications_subscription($template->type)->build_instance($template);
+  }
+
+
+ 
   /**
    * Produce fieldset to edit field values
    */
@@ -288,7 +341,7 @@ class Notifications_Subscription extends Messaging_Object {
    *   Whether to load all fields in the same operation
    */
   public static function load($sid) {
-    return self::object_load(self::DB_TABLE, self::DB_KEY, $sid, 'Notifications_Subscription');
+    return notifications_subscription_load($sid);
   }
   /**
    * Load condition fields from db
@@ -996,12 +1049,107 @@ class Notifications_Subscription extends Messaging_Object {
         break;
     }
   }
-  // Get table name for storage
-  public static function db_table() {
-    return self::DB_TABLE;
+
+}
+
+/**
+ * List of subscriptions or subscription types
+ */
+class Notifications_Subscription_List {
+  public $subscriptions = array();
+  protected $instances = array();
+  protected $types = array();
+  /**
+   * Construct with list of subscriptions
+   */
+  public function __construct() {
+    if ($args = func_get_args()) {
+      $this->add($args);
+    }
   }
-  // Get key field name for storage
-  public static function db_key() {
-    return self::DB_KEY;
+  /**
+   * Add subscription/s to the list
+   */
+  public function add($items) {
+    if (is_array($items)) {
+      foreach ($items as $item) {
+        $this->add($item);
+      } 
+    }
+    else {
+      $this->add_subscription($subscription);
+    }
+  }
+  /**
+   * Add single subscription
+   */
+  function add_subscription($subscription) {
+    $this->subscriptions[] = $subscription;
+    $this->types[$subscription->type][] = $subscription;
+    if ($subscription->is_instance()) {
+      $this->instances[$subscription->sid] = $subscription;
+    }
+  }
+  
+  /**
+   * Subform with subscription options so it can be reused for a fieldset on a bigger form
+   * 
+   * Was: notifications_object_options_subform($subscriptions, $buttons = TRUE)
+   * 
+   * @param $subscriptions
+   *   List of subscription objects
+   * @param $buttons
+   *   Whether to add buttons to the fieldset
+   */
+  function options_subform($buttons = TRUE) {
+    $form['subscriptions'] = $this->options_fieldset(TRUE);
+    $form['subscriptions'] += array(
+      '#type' => 'fieldset',
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,  
+    );
+    if ($buttons) {
+      $form['subscriptions']['submit'] = array('#type' => 'submit', '#value' => t('Update'));
+      // If full form, redirect so the full page which may have subscription links is updated
+      $form['#redirect'] = $_GET['q'];
+    }
+    $form['#submit'][] = 'notifications_subscriptions_options_form_submit';
+    return $form;
+  }
+
+  
+  /**
+   * Build fieldset with subscription options
+   * 
+   * Was: notifications_object_options_fieldset($subscriptions, $title = FALSE)
+   */
+  function options_fieldset($title = FALSE) {
+    $elements = array(
+      '#tree' => TRUE,
+    );
+    // Process all options building the array of indexed params for each
+    $options = $params = $defaults = array();
+    $index = 1; // Index to map checkboxes to subscriptions
+    $number = 0; // Number of active subscriptions
+    foreach ($this->subscriptions as $subscription) {
+      $options[$index] = $subscription->get_name();
+      $params[$index] = $subscription;
+      // Check wether user is subscribed
+      if ($subscription->is_instance()) {
+        $defaults[] = $index;
+        $number++;
+      }
+      $index++;    
+    }
+    $elements['params'] = array('#type' => 'value', '#value' => $params);
+    $elements['options'] = array(
+      '#type' => 'checkboxes',
+      '#default_value' => $defaults,
+      '#options' => $options,
+    );
+    if ($title) {
+      $elements['#title'] = t('Subscriptions (@number)', array('@number' => $number));
+    }
+    return $elements;
   }
 }

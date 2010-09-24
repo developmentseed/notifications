@@ -1,9 +1,9 @@
-; $Id: notifications_digest.info,v 1.1.4.2 2010/03/25 17:45:18 jareyero Exp $
-name = Digest notifications
-description = Digest notifications to include more than one in a single message.
+; $Id: notifications.info,v 1.1.4.1.6.1 2010/03/26 17:40:15 jareyero Exp $
+name = Notifications
+description = The basic notifications framework
 package = "Notifications"
+version = VERSION
+core = 7.x
 dependencies[] = messaging
-dependencies[] = token
-dependencies[] = notifications
-core = 6.x
-php = 5.0
+dependencies[] = messaging_template
+
