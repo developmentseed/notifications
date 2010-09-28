@@ -356,10 +356,11 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    *   Number of queued rows
    */
   public static function queue_event($event) {
-    if ($event_conditions = $event->get_conditions()) {
+    $subscription_types = $event->get_subscription_types();
+    if ($event_conditions = $event->get_conditions($subscription_types)) {
       $insert = db_insert('notifications_queue')
         ->fields(array('name', 'uid', 'mdid', 'send_method', 'sid', 'send_interval', 'language', 'conditions', 'created', 'eid'));
-      $select = db_select('notifications', 's')
+      $select = db_select('notifications_subscription', 's')
         ->distinct()
         ->fields('s', array('queue', 'uid', 'mdid', 'send_method','sid', 'send_interval', 'language', 'conditions'));
       $select->addExpression(REQUEST_TIME);

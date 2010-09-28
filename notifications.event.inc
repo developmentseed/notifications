@@ -20,14 +20,12 @@ class Notifications_Event extends Notifications_Object {
   public $typekey;
   // Main object id
   public $oid;
-  // Mixed array of parameters
-  public $params = array();
   // Time the event was produced
   public $created;
   // Notifications in queue linked to this event
   public $counter = 0;
-  // Loaded objects for this event
-  public $objects;
+  // Objects for this event
+  public $objects = array();
   // Processing options, not saved
   public $save = TRUE;
   public $queue = TRUE;
@@ -60,9 +58,9 @@ class Notifications_Event extends Notifications_Object {
   /**
    * Build Event Object
    */
-  public static function build_object($template) {
-    $class = notifications_event_type($template->type, 'class', 'Notifications_Event');
-    return new $class($template);
+  public static function build_object($object) {
+    $class = notifications_event_type($object->type, 'class', 'Notifications_Event');
+    return new $class($object);
   }
 
   /**
@@ -92,49 +90,38 @@ class Notifications_Event extends Notifications_Object {
     }
   }
   /**
-   * Get template name
+   * Get simple subject text
    */
-  function get_template() {
-    if (!isset($this->template)) {
-      if ($template = self::template_map($this->typekey)) {
-        $this->template = $template;
-      }
-      else {
-        // Build default that will be like notifications-event-type-action
-        $parts = array($this->module, 'event', $this->type, $this->action);
-        $this->template = implode('-', array_filter($parts));
-      }
-    }
-    return $this->template;
+  function get_subject() {
+    return t('Notifications event');
+  }
+  
+  /**
+   * Get message template to build this event as text
+   * 
+   * The value will be taken from this event's defaults, but can be overriden on hook_notifications('event types')
+   * 
+   * @param $type
+   *   Template type: 'message', 'line', 'content', etc...
+   */
+  function get_template($type) {
+    $defaults = $this->default_templates();
+    $class = $this->get_type($type . '_template', $defaults[$type]);
+    return new $class($this);
   }
 
   /**
-   * Get message template for event
-   * 
-   * Replaces notifications_event_message_part()
-   * 
-   * @param $event
-   *   Message type to send, either 'event' or 'digest'
-   * @param $key
-   *   Id of message part, ie 'header'
-   * @param $method
-   *   Method by which message will be sent. Normally 'mail'
-   * @param $param
-   *   Event data if we have a single event (type = event), none if we are digesting multiple events (type = digest)
-   *   
-   * @return
-   *   Part of the message with tokens for replacement.
+   * Build template
    */
-  function message_part($key, $method, $language, $module = 'notifications') {
-    // If event passed check for predefined text or get optional keys from event
-    if ($text = $this->get_text($key)) {
-      return $text;
+  function build_template() {
+    if ($template = self::template_map($this->typekey)) {
+      $this->template = $template;
     }
-    elseif ($template = $this->get_template()) {
-      $text = messaging_template_text_part($template, $key, $method, $language);
-    }
-    // Default, template not found, return some information if debugging
-    return isset($text) ? $text : '';
+    else {
+      // Build default that will be like notifications-event-type-action
+      $parts = array($this->module, 'event', $this->type, $this->action);
+      $this->template = implode('-', array_filter($parts));
+    }   
   }
   
   /**
@@ -150,33 +137,6 @@ class Notifications_Event extends Notifications_Object {
   }
 
   /**
-   * Get template name for event type
-   * 
-   * Replaces notifications_event_get_template()
-   * 
-   * @param $event_type
-   *   Event type key
-   */
-  public static function template_map($event_type) {
-    if (!isset(self::$_templates)) {
-      self::$_templates = variable_get('notifications_event_template', array());
-    }
-
-    if (!isset(self::$_templates[$event_type])) {
-      if ($template = notifications_event_types($event_type, 'template')) {
-        // Use default value from event definition
-        self::$_templates[$event_type] = $template;
-      }
-      else {
-        // Mark as false for not searching again
-        self::$_templates[$event_type] = FALSE;
-      }
-    }
-
-    return self::$_templates[$event_type];
-  }
-
-  /**
    * Get set event object
    */
   function object($type, $object = NULL) {
@@ -189,77 +149,34 @@ class Notifications_Event extends Notifications_Object {
     }
   }
   /**
-   * Add event object
-   * 
-   * @param $type
-   *   Object type: 'user', 'node', etc...
-   * @param $object
-   *   Full object or key field value. I.e. it may be nid, uid
+   * Add Notifications Object
+   *
+   * @param $object Notifications_Object
    */
-  function add_object($type, $object) {
-    $key = notifications_object_type($type, 'key_field');
-    $value = is_object($object) ? $object->$key : $object;
-    $this->params['objects'][$type] = $value;
-    if (is_object($object)) {
-      $this->set_object($type, $object);
-    }
+  function add_object($object) {
+    $this->objects[$object->type] = $object;
   }
-  /**
-   * Add event object to be serialized and stored with the event
-   */
-  function store_object($type, $object) {
-    $this->params['objects'][$type] = $object;
-    $this->set_object($type, $object);
-  }
-  /**
-   * Set event object
-   */
-  function set_object($type, $object) {
-    $this->objects[$type] = $object;
-  }
+
   /**
    * Get event objects
    */
   function get_objects() {
-    // Make sure objects are loaded
-    $this->load_objects();
     return $this->objects;
   }
   /**
    * Get single object
    */
   function get_object($type) {
-    $this->load_objects();
     return isset($this->objects[$type]) ? $this->objects[$type] : NULL;
   }
   /**
-   * Load event objects
-   * 
-   * @return Boolean
-   *   Object status, FALSE for incomplete (missing object)
+   * Check that all the objects still exist
    */
-  function load_objects($refresh = FALSE) {
-    if (!isset($this->objects) || $refresh) {
-      $this->objects = array();
-      if (!empty($this->params['objects'])) {
-        foreach ($this->params['objects'] as $type => $value) {
-          if (is_object($value)) {
-            // This object was serialized along with the event, just set it
-            $this->objects[$type] = $value;
-          }
-          elseif ($object = notifications_object_load($type, $value)) {
-            $this->objects[$type] = $object;
-          }
-          else {
-            // Cannot find object, mark as incomplete and return FALSE
-            $this->incomplete = TRUE;
-            return FALSE;
-          }
-        }
-      }
+  function check_objects() {
+    foreach ($this->get_objects() as $object) {
+      if (!$object->value) return FALSE;
     }
-    // Return true unless marked as incomplete
-    return $this->incomplete ? FALSE : TRUE;
+    return TRUE;
   }
 
   /**
@@ -299,6 +216,7 @@ class Notifications_Event extends Notifications_Object {
       ->condition('eid', $this->eid)
       ->fiels(array('data' => serialize($this)));
   }
+
   /**
    * Queue event for later processing
    */
@@ -337,16 +255,19 @@ class Notifications_Event extends Notifications_Object {
       unset($this->eid);
     }
   }
+
   /**
    * Check user access to event's objects
    * 
    * Replaces notifications_event_user_access($event, $account);
    */
-  function user_access($account) {
-    if (!isset($this->_access[$account->uid])) {
-      $this->_access[$account->uid] = notifications_user_allowed('event', $account, $this);
+  public function user_access($account) {
+    foreach ($this->get_objects() as $object) {
+      if (!$object->user_access($account)) {
+        return FALSE;
+      }
     }
-    return $this->_access[$account->uid];
+    return TRUE;
   }
   
   /**
@@ -414,7 +335,7 @@ class Notifications_Event extends Notifications_Object {
     if (isset($value)) {
       $this->counter = $value;
     }
-    db_query('UPDATE {notifications_event} SET counter = %d WHERE eid = %d', $this->counter, $this->eid);
+    db_query('UPDATE {notifications_event} SET counter = :counter WHERE eid = :eid', array(':counter' => $this->counter, ':eid' => $this->eid));
   }
 
   /**
@@ -442,7 +363,69 @@ class Notifications_Event extends Notifications_Object {
       return $event;
     }    
   }
-  
+  /**
+   * Get default templates for this event
+   */
+  function default_templates() {
+    return array(
+      'message' => 'Notifications_Message_Template',
+      'body' => 'Notifications_Message_Body',
+      'content' => 'Notifications_Message_Content',
+      
+    );
+  }
+
+  /**
+   * Build query for subscriptions that match this event type
+   */
+  function query_subscriptions() {
+    $query = db_select('notifications_subscription', 's');
+    // Add field conditions for subscription types
+    if ($types = $this->get_subscription_types()) {
+      $condition = $this->get_field_conditions($types);
+      if ($condition && $condition->count()) {
+        $query
+          ->leftJoin('notifications_fields', 'f', 's.sid = f.sid');
+          ->condition($condition)
+      }
+      else {
+        $query->condition('type', $types);
+      }
+    }
+    return $query;
+  }
+
+  /**
+   * Get field conditions
+   */
+  function get_field_conditions($subscription_types) {
+    $add = db_or();
+    foreach ($subscription_types as $type) {
+      $condition = notifications_subscription_type($type)->event_conditions($this, db_or());
+      if ($condition && $condition->count()) {
+        $add->condition(
+          db_and()
+          ->condition('type', $this->type)
+          ->condition($condition));         
+      }
+      else {
+        $add->condition('type', $this->type);
+      }
+    }
+    return $add;
+  }
+  /**
+   * Get subscription types triggered by this event
+   */
+  function get_subscription_types() {
+    return array_unique($this->invoke_all('subscription types'));
+  }
+  /**
+   * Invoke all hook_notifications_event()
+   */
+  function invoke_all($op) {
+    return module_invoke_all($op, $this);
+  }
 }
 
 /**
@@ -510,10 +493,5 @@ class Notifications_Event_Tracker {
       }    
     }
   }
-  /**
-   * Invoke all hook_notifications_event()
-   */
-  function invoke_all($op) {
-    return module_invoke_all($op, $this);
-  }
+
 }

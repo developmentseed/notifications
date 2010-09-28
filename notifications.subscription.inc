@@ -182,6 +182,55 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
       }
     }
   }
+  
+  /**
+   * Get event conditions OR'd
+   * 
+   * These will look like
+   * 
+   * s.type = 'node' AND (field_condition1 OR field_condition2)
+   * s.type = 'term' AND (field_condition1)
+   */
+  function get_event_conditions($event, $add) {
+    foreach ($event->get_objects() as $object) {
+      $condition = $this->get_object_conditions($object, db_or());
+      if ($condition && $condition->count()) {
+        $add->condition($condition);
+      }
+    }
+    // Finally, add subscription type
+    return db_and()
+      ->condition('type', $this->type)
+      ->condition($add)
+  }
+
+  /**
+   * Get OR'd field conditions for this subscription type and object
+   * 
+   * Conditions will look like
+   *   f.type = 'nid' AND f.value = 100
+   *   f.type = 'term' AND f.value IN (1, 2, 3, 4)
+   **/
+  function get_object_conditions($object, $add) {
+    foreach ($this->get_unique_fields() as $field) {
+      if ($condition = $field->get_object_condition($object)) {
+        $add->condition($condition);
+      }
+    }
+    return $add;
+  }
+  /**
+   * Get unique field per type.
+   * 
+   * A subscription may have more than one field of the same type
+   */
+  function get_unique_fields() {
+    $fields = array();
+    foreach ($this->get_fields() as $field) {
+      $fields[$field->type] = $field;
+    }
+    return $fields;
+  }
 }
 
 /**

@@ -96,16 +96,31 @@ class Notifications_Field {
     return $this->object;
   }
   /**
-   * Get query conditions
+   * Get query conditions for a given object
+   * @param $object
    */
-  function get_conditions() {
+  function get_object_condition($object) {
+    
+  }
+  /**
+   * Get query condition for current value
+   */
+  function get_query_condition() {
+    if (isset($value)) {
+      return $this->get_value_condition($value);
+    }
+  }
+  /**
+   * Get query condition for a given value
+   */
+  function get_value_condition($value) {
     $and = db_and();
-    $and->conditions('type', $this->type);
+    $and->condition('type', $this->type);
     if ($this->data_type == 'int') {
-      $and->conditions('intval', (int)$this->value);
+      $and->condition('intval', (int)$value);
     }
     else {
-      $and->conditions('value', $this->value);
+      $and->condition('value', $value);
     }
     return $and;
   }
@@ -225,7 +240,14 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   function user_access($account) {
     return ($node = $this->object()) ? node_access('view', $node, $account) : FALSE;
   }
-
+  /**
+   * Get query condition for nodes
+   */
+  function get_object_condition($object) {
+    if ($object->type == 'node' && isset($object->value)) {
+      return $this->get_value_condition($object->value);
+    }
+  }
 }
 
 /**
@@ -251,6 +273,7 @@ class Notifications_User_Field extends Notifications_Field_Autocomplete {
   function autocomplete_value() {
     return notifications_user_name_callback();
   }
+
   function format_name($format) {
     return messaging_user_format_name();
   }

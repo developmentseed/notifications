@@ -131,6 +131,14 @@ class Notifications_Drupal_Object {
   function index() {
     return isset($this->key) ? $this->type . ':' . $this->key : $this->type;
   }
+      
+  /**
+   * PHP Magic. Regurn object properties to be serialized
+   */
+  public function __sleep() {
+    return array('type', 'key', 'name');
+  }
+
 }
 
 /**
