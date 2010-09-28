@@ -34,7 +34,7 @@ function notifications_query_build($params, $query = array()) {
         }
         // Use field definition provided by hook_notifications('subscription fields') and handle array values with IN conditions
         // Workaround to have a valid one because not all modules provide the information yet (og?)
-        if (notifications_subscription_fields($field, 'type') == 'int') {
+        if (notifications_field_type($field, 'type') == 'int') {
           $type = 'int';
           $fieldval = 'intval';
         }
@@ -121,7 +121,7 @@ function notifications_query_event_queue($event) {
   $query['into'] = '{notifications_queue}';
   $query['distinct'] = TRUE;
   $query['select'] = array('s.uid', 's.mdid', 's.send_method', 's.sid', 's.module', '%d', 's.send_interval', 's.language', 's.cron', '%d', 's.conditions');
-  $query['from'] = array('{notifications} s');
+  $query['from'] = array('{notifications_subscription} s');
   $query['select args'] = array($event->eid, $event->created);
   // We do a left join instead of inner join to allow subscriptions with no fields to work
   $query['join'] = array('LEFT JOIN {notifications_fields} f ON s.sid = f.sid');
@@ -179,7 +179,7 @@ function notifications_query_subscriptions($main_conditions, $field_conditions =
   $where = _messaging_query_where('notifications', $main_conditions, 's');
   $query['where'] = array_merge($query['where'], $where['where']);
   $query['where args'] = array_merge($query['where args'], $where['args']);
-  $query['from'] = array('{notifications} s');
+  $query['from'] = array('{notifications_subscription} s');
   // Add in field conditions. How the fields table is joined will depend on other parameters
   if ($field_conditions) {
     if ($query['fields operator'] == 'AND') {

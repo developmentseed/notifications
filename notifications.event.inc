@@ -7,11 +7,12 @@
 
 
 /**
- * Message destination class
+ * Notifications Event class
  */
-class Notifications_Event extends NotificationsObject {
+class Notifications_Event extends Notifications_Object {
   // Object unique id
   public $eid;
+  // Module and type of the event, will define it
   public $module = 'notifications';
   public $type = '';
   public $action = '';
@@ -48,12 +49,7 @@ class Notifications_Event extends NotificationsObject {
    * Constructor
    */
   function __construct($template = NULL) {
-    if ($template) {
-      $properties = (array)$template;
-      foreach ($properties as $key => $value) {
-        $this->$key = $value;
-      }
-    }
+    parent::__construct($template);
     if (!isset($this->created)) {
       $this->created = time();
     }
@@ -68,6 +64,7 @@ class Notifications_Event extends NotificationsObject {
     $class = notifications_event_type($template->type, 'class', 'Notifications_Event');
     return new $class($template);
   }
+
   /**
    * Load event by id
    */
@@ -266,9 +263,6 @@ class Notifications_Event extends NotificationsObject {
   }
 
   /**
-   * Trigger this event and process it
-   */
-  /**
    * Trigger event. Save, run queue query, etc...
    * 
    * Replaces notifications_event_trigger($event)
@@ -276,35 +270,73 @@ class Notifications_Event extends NotificationsObject {
   function trigger() {
     // Notify other modules we are about to trigger some subscriptions event
     // Modules can do cleanup operations or modify event properties
-    module_invoke_all('notifications_event', 'trigger', $this);
-    
+    $this->invoke_all('trigger'); 
     // Store event, unles marked not to be saved 
-    if ($this->save) {
+    if ($this->save) {    
       $this->save();
-      // Send event to queue for subscriptions, unless marked not to
-      if ($this->queue) {
-        $this->queued = TRUE;
-        $this->counter = notifications_queue()->queue_event($this);
-  
-        // Modules can do cleanup operations or modify the queue or the event counter
-        module_invoke_all('notifications_event', 'queued', $this);
-        $count = $this->counter;
-  
-        // Now update event counter with rows in notifications_queue or delete if no rows
-        if ($count) {
-          $this->update_counter($count);
-          // If immediate sending enabled, store it for sending on page exit.
-          if (variable_get('notifications_send_immediate', 0)) {
-            self::send_immediate($this);
-          }
-        }
-        else {
-          $this->delete();
-        }
-      }
+    }
+    // Send event to queue for subscriptions, unless marked not to
+    if ($this->queue) {
+      $this->queue();
     }
   }
 
+  /**
+   * Create a record for the event and get unique eid
+   */
+  function record($update = FALSE) {
+    if (!$this->eid || $update) {
+      drupal_write_record('notifications_event', $this, $this->eid ? 'eid' : array());
+    }
+  }
+  /**
+   * Save full event
+   */
+  function save() {
+    // First of all, make sure we have a unique eid
+    $this->record();
+    return $this->db_update('notifications_event')
+      ->condition('eid', $this->eid)
+      ->fiels(array('data' => serialize($this)));
+  }
+  /**
+   * Queue event for later processing
+   */
+  function queue() {
+    // First of all, make sure we have a unique eid
+    $this->record();
+    $this->queued = TRUE;
+    $this->counter = notifications_queue()->queue_event($this);
+
+    // Modules can do cleanup operations or modify the queue or the event counter
+    $this->invoke_all('queued');
+
+    // Now update event counter with rows in notifications_queue or delete if no rows
+    if ($this->counter) {
+      $this->update_counter();
+      // If immediate sending enabled, store it for sending on page exit.
+      if (variable_get('notifications_send_immediate', 0)) {
+        Notifications_Event_Tracker::send_immediate($this);
+      }
+    }
+    else {
+      $this->delete();
+      return FALSE;
+    }    
+  }
+
+  /**
+   * Delete from db
+   */
+  function delete() {
+    if (!empty($this->eid)) {
+      // Inform all modules when we still have an eid, in case they have linked data
+      $this->invoke_all('delete');
+      // Finally, delete traces in our reference table
+      return db_delete('notifications_event')->condition('eid', $this->eid)->execute();
+      unset($this->eid);
+    }
+  }
   /**
    * Check user access to event's objects
    * 
@@ -347,7 +379,7 @@ class Notifications_Event extends NotificationsObject {
       $event->add_object($type, $object);
     }
     // Modules can do cleanup operations or modify event properties
-    module_invoke_all('notifications_event', 'build', $event);
+    $event->invoke_all('build');
     return $event;
   }
 
@@ -477,5 +509,11 @@ class Notifications_Event_Tracker {
         notifications_queue()->process_rows(array('cron' => 1, 'eid' => $event->eid, 'send_interval' => 0));
       }    
     }
+  }
+  /**
+   * Invoke all hook_notifications_event()
+   */
+  function invoke_all($op) {
+    return module_invoke_all($op, $this);
   }
 }

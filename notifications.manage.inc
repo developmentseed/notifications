@@ -39,7 +39,7 @@ function notifications_manage_subscriptions_access($sids) {
   }
   else {
     $params = array_merge(array($user->uid), array_values($sids));
-    $count = db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE uid = %d AND sid IN (" . db_placeholders($sids) . ')', $params));
+    $count = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = %d AND sid IN (" . db_placeholders($sids) . ')', $params));
     return $count == count($sids);
   }
 } 
@@ -53,9 +53,9 @@ function notifications_manage_subscriptions_access($sids) {
 function notifications_manage_subscriptions_form($account = NULL, $full = TRUE) {
   $filter = notifications_subscriptions_build_filter_query($account);
   if ($account) {
-    $result = pager_query('SELECT n.*, d.address FROM {notifications} n INNER JOIN {messaging_destination} d ON n.mdid = d.mdid '. $filter['join'] . $filter['where'] .' ORDER BY n.sid DESC', 50, 0, NULL, $filter['args']);
+    $result = pager_query('SELECT n.*, d.address FROM {notifications_subscription} n INNER JOIN {messaging_destination} d ON n.mdid = d.mdid '. $filter['join'] . $filter['where'] .' ORDER BY n.sid DESC', 50, 0, NULL, $filter['args']);
   } else {
-    $result = pager_query('SELECT n.*, d.address, u.name AS user_name FROM {notifications} n INNER JOIN {messaging_destination} d ON n.mdid = d.mdid '. $filter['join'] .' INNER JOIN {users} u ON n.uid = u.uid '. $filter['where'] .' ORDER BY n.sid DESC', 50, 0, NULL, $filter['args']);
+    $result = pager_query('SELECT n.*, d.address, u.name AS user_name FROM {notifications_subscription} n INNER JOIN {messaging_destination} d ON n.mdid = d.mdid '. $filter['join'] .' INNER JOIN {users} u ON n.uid = u.uid '. $filter['where'] .' ORDER BY n.sid DESC', 50, 0, NULL, $filter['args']);
   }
   $form = notifications_manage_subscriptions_form_options($account);
   $form_destination = drupal_get_destination();

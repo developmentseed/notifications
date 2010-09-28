@@ -450,11 +450,11 @@ class Notifications_Digest extends Notifications_Queue {
    * @arg $update
    *   Fields values to update. Array of field => value pairs
    */
-  public static function queue_update($params, $updates) {
-    $values =  _messaging_query_conditions('notifications_queue', $updates);
-    $where = self::queue_query($params);
-    $args = array_merge($values['args'], $where['args']);
-    return db_query('UPDATE {notifications_queue} SET ' . implode(', ', $values['conditions']) . ' WHERE ' . implode(' AND ', $where['where']), $args);
+  public static function queue_update($fields, $condition) {
+    return db_update('notifications_queue')
+      ->fields($fields)
+      ->condition($condition)
+      ->execute();
   }
   
   /**
@@ -465,17 +465,10 @@ class Notifications_Digest extends Notifications_Queue {
    * @param $params
    *   Array of conditions. If none, all rows for disabled subscriptions will be deleted
    */
-  function queue_delete($params) {
-    if ($params) {
-      $query = $this->queue_query($params);
-      db_query("DELETE FROM {notifications_queue} WHERE ". implode(' AND ', $query['where']), $query['args']);
-    }
-    else {
-      // Delete all queued notifications for subscriptions not active
-      // Note queue rows without subscription will be kept (like the ones form notifications_lite)
-      db_query("DELETE FROM {notifications_queue} WHERE sid IN (SELECT sid FROM {notifications} WHERE status <> %d)", NOTITICATIONS_SUBSCRIPTION_ACTIVE);
-    }
-    return db_affected_rows();
+  public static function queue_delete($condition) {
+    return db_delete('notifications_queue')
+      ->condition($condition)
+      ->execute();
   }
   
   /**
@@ -484,8 +477,8 @@ class Notifications_Digest extends Notifications_Queue {
    * @param $params
    *   Array of conditions. If none, all rows for disabled subscriptions will be deleted
    */
-  function queue_clean($params) {
-    $this->queue_delete($params);
+  function queue_clean($condition) {
+    $this->queue_delete($condition);
     $this->event_clean(TRUE);
   }
 
@@ -500,28 +493,12 @@ class Notifications_Digest extends Notifications_Queue {
   /**
    * Count the number of rows in queue
    */
-  public static function queue_count($params = NULL) {
-    if ($params) {
-      $query = self::queue_query($params);
-      return db_result(db_query('SELECT COUNT(*) FROM {notifications_queue} WHERE ' . implode(' AND ', $query['where']), $query['args']));
-    } else {
-      return db_result(db_query('SELECT COUNT(*) FROM {notifications_queue}'));
+  public static function queue_count($condition = NULL) {
+    $query = db_select('notifications_queue', 'q');
+    if ($condition) {
+      $query->condition($condition);
     }
-  }
-  
-  /**
-   * Get queue status count grouping by some fields
-   */
-  public static function queue_status($fields) {
-    $field_names = implode(', ', $fields);
-    $result = db_query("SELECT $field_names, count(*) AS count FROM {notifications_queue} WHERE cron = 1 GROUP BY $field_names");    
-    // Get all rows and compile data
-    $data = array();
-    $count = 0;
-    while ($item = db_fetch_object($result)) {
-      $data[] = $item;
-    }
-    return $data;
+    return $query->countQuery()->execute()->fetchField();
   }
 
   
@@ -543,37 +520,96 @@ class Notifications_Digest extends Notifications_Queue {
     db_query("DELETE FROM {notifications_event} WHERE created < %d AND eid < (SELECT MIN(eid) FROM {notifications_queue})", $expiretime);
   }
   
+}
+
+/**
+ * Process for digested notifications
+ */
+class Notifications_Digest_Process extends Notifications_Queue_Process {
   /**
-   * Build query conditions for queue queries
-   * 
-   * @param $params
-   *   Array of parameters, field => value form
-   *   Special parameters
-   *     'max_squid' => max squid to delete
-   *     'rows' => array of squid values to delte
-   * @return
-   *   Array with 'where' and 'args' elements. Each of them is an array
+   * Default queue name for this process
    */
-  public static function queue_query($params, $table_alias = NULL) {
-    $where = $args = array();
-    
-    // Special condition max_sqid
-    if (isset($params['max_sqid'])) {
-      $where[] = $table_alias ? "$table_alias.sqid <= %d" : "sqid <= %d";
-      $args[] = $params['max_sqid'];
-      unset ($params['max_sqid']);
+  public static function queue_name() {
+    return 'digest';
+  }
+}
+
+/**
+ * Worker for digested notifications
+ * 
+ * - Creates a digest batch for each send interval
+ */
+class Notifications_Digest_Worker extends Notifications_Batch_Worker {
+  /**
+   * Create batch object of the right class
+   */
+  public function createBatch() {
+    $batch = new Notifications_Digest_Batch();
+    $batch->set_conditions($this->batch_conditions);
+  }
+
+  /**
+   * Process current batch
+   * 
+   * @param $process Notifications_Queue_Process
+   */
+  function process_batch($process) {
+    foreach ($this->batch as $item) {
+      $result = $this->process_item($item);
+      $this->count($result ? 'success' : 'error');
     }
-    // Special condition send_time_after
-    if (isset($params['send_time_after'])) {
-      $where[] = $table_alias ? "$table_alias.send_time < %d" : "send_time < %d";
-      $args[] = $params['send_time_after'];
-      unset ($params['send_time_after']);
-    }  
-    // User generic query builder for the rest of fields
-    $values =  _messaging_query_conditions('notifications_queue', $params, $table_alias);  
-    $where = array_merge($where, $values['conditions']);
-    $args = array_merge($args, $values['args']);
-   
-    return array('where' => $where, 'args' => $args);
-  }  
+    return $this->result;
+  }
+  /**
+   * Process queued item, one at a time
+   */
+  function process_item($item) {
+    $this->count('items');
+    $this->deleteItem($item);
+    return TRUE;
+  }
+}
+
+/**
+ * Batch for digesting queue items.
+ * 
+ * - Select items by send_interval, send_method, user
+ * - Digest items by event  
+ */
+class Notifications_Digest_Batch extends Notifications_Queue_Batch {
+  public $batch_conditions;
+
+  /**
+   * Set batch conditions
+   */
+  function set_conditions($conditions) {
+    $this->batch_conditions = $conditions;
+    foreach ($conditions as $key => $value) {
+      $this->$key = $value;
+    }
+  }
+  /**
+   * Get count query for this batch
+   */
+  function batch_count() {
+    $query = $this->get_queue()
+      ->db_select()
+      ->condition('expire', 0)
+      ->fields('q', $this->group_fields())
+      
+    
+    foreach ($this->group_fields() as $field) {      
+      $query->groupBy($field);
+    }
+    // This needs to be added at the end?
+    $query->countQuery();
+    $query->addExpression('COUNT(*) AS cuenta');
+  }
+  /**
+   * Get group by fields
+   */
+  function group_fields() {
+    return array('send_interval', 'send_method', 'uid', 'mdid')
+  }
+  
 }

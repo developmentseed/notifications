@@ -24,6 +24,16 @@ abstract class Notifications_Object {
    * They need a build function
    */
   public static abstract function build_object($object);
+  /**
+   * They need a user access function
+   */
+  public static abstract function user_access($account, $op = 'view');
+  /**
+   * User access function
+   */
+  public static function function object_access($type, $object, $user) {
+    
+  }
 }
 
 /**

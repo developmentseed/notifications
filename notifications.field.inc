@@ -318,37 +318,6 @@ function _notifications_node_references($string, $match = 'contains', $types = a
 }
 
 /**
- * Invoke a callback for a field type. 
- * 
- * If the field has no callback it will default to the field object type callback
- * 
- * @param $type
- *   Subscription type
- * @param $name
- *   Callback name
- * @param $arg1, $arg2...
- *   Variable arguments
- */
-function _notifications_field_callback() {
-  $args = func_get_args();
-  $type = array_shift($args);
-  $name = array_shift($args);
-  // We try first the field callback, then the field object type callback
-  $info = notifications_subscription_fields($type);
-  if (isset($info[$name])) {
-    return _notifications_info_callback($info, $name, $args);
-  }
-  elseif (!empty($info['object_type']) && ($object_info = notifications_object_type($info['object_type'])) && isset($object_info[$name])) {
-    return _notifications_info_callback($object_info, $name, $args);
-  }
-  else {
-    return NULL;
-  }
-}
-
-
-
-/**
  * Get full info array for field type that has the property.
  * 
  * It will return the info array for the field it it has the property or the info for the object type
@@ -489,7 +458,7 @@ function notifications_field_real_value($type, $value) {
  * Get type information for field. For now its just subscription fields
  */
 function notifications_field_type($type = NULL, $property = NULL) {
-  return notifications_subscription_fields($type, $property);
+  return notifications_field_type($type, $property);
 }
 
 /**
@@ -547,7 +516,7 @@ function notifications_field_valid_value($value, $type = NULL) {
  */
 function notifications_field_form_element($type, $value, $subscription = NULL, $title = FALSE, $required = FALSE, $size = 40) {
   $subscription_type = $subscription ? $subscription->type : NULL;
-  $field_info = notifications_subscription_fields($type);
+  $field_info = notifications_field_type($type);
   $object_info = isset($field_info['object_type']) ? notifications_object_type($field_info['object_type']) : array();
   $merged_info = $field_info + $object_info;
 

@@ -38,7 +38,7 @@ function notifications_destination_validate($method, $address, $account) {
  */
 function notifications_destination_subform($destination, $links = array()) {
   // Count subscriptions for this destination
-  $count = db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE mdid = %d", $destination->mdid));
+  $count = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE mdid = %d", $destination->mdid));
   $form['destination'] = array('#type' => 'value', '#value' => $destination);
   $form['destination_view'] = array(
     '#title' => $destination->address_name(),
@@ -504,20 +504,20 @@ function notifications_destination_method_replace($old, $new) {
     $new_type = messaging_method_info($new, 'address_type');
     // If both methods have the same address type, just replace methods
     if ($old_type == $new_type) {
-      db_query("UPDATE {notifications} SET send_method = '%s' WHERE send_method = '%s'", $new, $old);
+      db_query("UPDATE {notifications_subscription} SET send_method = '%s' WHERE send_method = '%s'", $new, $old);
       $replaced = db_affected_rows();
     }
     else {
       // First try a bulk replacement for users that have both types of destination
-      db_query("UPDATE {notifications} s INNER JOIN {messaging_destination} d ON s.uid = d.uid SET s.mdid = d.mdid, s.send_method = '%s', s.destination = d.address WHERE s.uid > 0 AND s.send_method = '%s' AND d.type = '%s'", $new, $old, $new_type);
+      db_query("UPDATE {notifications_subscription} s INNER JOIN {messaging_destination} d ON s.uid = d.uid SET s.mdid = d.mdid, s.send_method = '%s', s.destination = d.address WHERE s.uid > 0 AND s.send_method = '%s' AND d.type = '%s'", $new, $old, $new_type);
       $replaced = db_affected_rows();
       // Now find a replacement for the rest. In case there are more than one subscription for a destination, process all at once
       // Unless this was a database field, which we should have already fixed. When no destination user has no data
-      $result = db_query("SELECT DISTINCT uid, mdid FROM {notifications} WHERE uid > 0 AND send_method = '%s'", $old);
+      $result = db_query("SELECT DISTINCT uid, mdid FROM {notifications_subscription} WHERE uid > 0 AND send_method = '%s'", $old);
       if (!$new_type || !$field || !$table) {
         while ($subs = db_fetch_object($result)) {
           if (($account = notifications_load_user($subs->uid)) && ($dest = messaging_account_build_destination($account, $new))) {
-            db_query("UPDATE {notifications} SET mdid = %d, send_method = '%s', destination = '%s' WHERE mdid = %d", $dest->mdid, $new, $dest->address, $subs->mdid);
+            db_query("UPDATE {notifications_subscription} SET mdid = %d, send_method = '%s', destination = '%s' WHERE mdid = %d", $dest->mdid, $new, $dest->address, $subs->mdid);
             $replaced += db_affected_rows();
             $created++;
           }
@@ -526,7 +526,7 @@ function notifications_destination_method_replace($old, $new) {
     }
   }
   // Block remaining subscriptions for old sending method
-  db_query("UPDATE {notifications} SET status = %d WHERE send_method = '%s'", Notifications_Subscription::STATUS_BLOCKED, $old);
+  db_query("UPDATE {notifications_subscription} SET status = %d WHERE send_method = '%s'", Notifications_Subscription::STATUS_BLOCKED, $old);
   $blocked = db_affected_rows();
   // Print out some messages about what's happened
   if (!empty($replaced)) {

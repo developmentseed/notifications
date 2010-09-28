@@ -17,7 +17,7 @@ function notifications_user_overview($form_state, $account) {
   $path = 'user/' . $account->uid;
   
   // Status, send method, interval
-  $count = db_query("SELECT status, COUNT(*) AS num FROM {notifications} WHERE uid = %d GROUP BY status", $account->uid);
+  $count = db_query("SELECT status, COUNT(*) AS num FROM {notifications_subscription} WHERE uid = %d GROUP BY status", $account->uid);
   $status_list = Notifications_Subscription::status_list();
   while ($current = db_fetch_object($count)) {
     $status[$current->status] = t('You have %count @status subscriptions.', array('%count' => $current->num, '@status' => $status_list[$current->status]));
@@ -149,7 +149,7 @@ function notifications_page_unsubscribe($type = NULL, $id = NULL) {
       }
       drupal_goto();
     } 
-    elseif ($account && !db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE uid = %d", $account->uid))) {
+    elseif ($account && !db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = %d", $account->uid))) {
       return t("You don't have any subscription on this site.");
     }
     else {
@@ -172,7 +172,7 @@ function notifications_page_unsubscribe_overview() {
   $subscriptions = 0;
   // Provide information for user subscriptions if logged in
   if ($user->uid) {
-    $subscriptions = db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE uid = %d", $user->uid));
+    $subscriptions = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = %d", $user->uid));
     if ($subscriptions) {
       $output .= '<p>' . format_plural($subscriptions, 'There is one subscription for this user account.', 'There are @count subscriptions for this user account.') . '</p>';
       $output .= '<p>' . t('You can:') . '<br />';
@@ -551,11 +551,11 @@ function notifications_update_user_subscriptions_submit($form, $form_state) {
   switch ($form_state['values']['operation']) {
     case 'enable':
       // Enable also blocked subscriptions just in case there are some
-      db_query('UPDATE {notifications} SET status = %d WHERE uid = %d', Notifications_Subscription::STATUS_ACTIVE, $account->uid);
+      db_query('UPDATE {notifications_subscription} SET status = %d WHERE uid = %d', Notifications_Subscription::STATUS_ACTIVE, $account->uid);
       drupal_set_message(t('All your subscriptions have been enabled.'));
       break;
     case 'disable':
-      db_query('UPDATE {notifications} SET status = %d WHERE status = %d AND uid = %d', Notifications_Subscription::STATUS_INACTIVE, Notifications_Subscription::STATUS_ACTIVE, $account->uid);
+      db_query('UPDATE {notifications_subscription} SET status = %d WHERE status = %d AND uid = %d', Notifications_Subscription::STATUS_INACTIVE, Notifications_Subscription::STATUS_ACTIVE, $account->uid);
       notifications_queue()->queue_clean(array('uid' => $account->uid));
       drupal_set_message(t('All your subscriptions have been disabled.'));
       break;
@@ -795,7 +795,7 @@ function notifications_subscription_list_form_values($form_values, $subscription
 /**
  * Theme function for fields in form
  */
-function theme_notifications_subscription_fields($elements) {
+function theme_notifications_field_type($elements) {
   $header = array(t('Field type'), t('Value'));
   $rows = array();
   foreach (element_children($elements['name']) as $key) {

@@ -29,9 +29,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
   public $process_current;
   public $process_options;
   public $process_max_sqid;
-  // Optional language to process only rows in this language. Not used yet.
-  // This can be used to run different languages in different crons and prent static caching issues.
-  public $process_language = NULL;
+
 
   /**
    * Start working with a queue.
@@ -99,7 +97,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    *   problem.
    */
   public function claimItem($lease_time = 60) {
-      // Claim an item by updating its expire fields. If claim is not successful
+    // Claim an item by updating its expire fields. If claim is not successful
     // another thread may have claimed the item in the meantime. Therefore loop
     // until an item is successfully claimed or we are reasonably sure there
     // are no unclaimed items left.
@@ -121,7 +119,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
         // If there are affected rows, this update succeeded.
         if ($update->execute()) {
           $item->data = $item->data ? unserialize($item->data) : array();     
-          return $item;
+          return new Notifications_Queue_Item($item);
         }
       }
       else {
@@ -130,7 +128,10 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
       }
     }
   }    
-
+  
+  /**
+   * Release item for it to be processed later
+   */
   public function releaseItem($item) {
     $update = db_update('queue')
       ->fields(array(
@@ -140,12 +141,79 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
       return $update->execute();
   }
 
+  /**
+   * Delete item from queue
+   */
   public function deleteItem($item) {
     db_delete('notifications_queue')
       ->condition('sqid', $item->sqid)
       ->execute();
   }
-
+  
+  /**
+   * Claim full batch (multiple items) from queue
+   */
+  public function claimBatch($max_size, $min_size = 1, $conditions = NULL, $lease_time = 60) {
+    // Claim an item by updating its expire fields. If claim is not successful
+    // another thread may have claimed the item in the meantime. Therefore loop
+    // until an item is successfully claimed or we are reasonably sure there
+    // are no unclaimed items left.
+    $query = db_select('notifications_queue', 'q')
+      ->fields('q')
+      ->condition('expire', 0)
+      ->condition('name', $this->name)
+      ->orderBy('created', 'ASC')
+      ->range(0, $max_size);
+    if ($conditions) {
+      $query->condition($conditions);
+    }
+    while (TRUE && lock_adquire('notifications_queue_batch')) {
+      if ($items = $query->execute()->fetchAll()) {
+        // Try to update the items. Only one thread can succeed in UPDATEing the
+        // same row.
+        foreach ($items as $index => $item) {
+          $update = db_update('notifications_queue')
+            ->fields(array(
+              'expire' => time() + $lease_time,
+            ))
+            ->condition('sqid', $item->sqid)
+            ->condition('expire', 0);
+          // If there are affected rows, this update succeeded.
+          if ($update->execute()) {
+            $item->data = $item->data ? unserialize($item->data) : array();
+          }
+          else {
+            unset($items[$index]);
+          }
+        }
+        if ($items) {
+          lock_release('notifications_queue_batch');
+          return $items;
+        }
+      }
+      else {
+        lock_release('notifications_queue_batch');
+        return FALSE;
+      }
+    }    
+  }
+  /**
+   * Release a full batch (multiple items)
+   */
+  public function releaseBatch($batch) {
+    return $this->db_update()
+      ->condition('sqid', array_keys($this->get_items()))
+      ->fields(array('expire' => 0))
+      ->execute(); 
+  }
+  /**
+   * Delete a full batch (multiple items)
+   */
+  public function deleteBatch($batch) {
+    return $this->db_delete()
+      ->condition('sqid', array_keys($this->get_items()))
+      ->execute(); 
+  }
   public function createQueue() {
     // All tasks are stored in a single database table so there is nothing we need
     // to do to createa new queue.
@@ -155,11 +223,33 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    * Delete a queue and every item in the queue.
    */
   public function deleteQueue() {
-    db_delete('notifications_queue')
-      ->condition('name', $this->name)
-      ->execute();  
+    $this->db_delete()->execute();
   }
 
+  /**
+   * Get select * query for this queue
+   */
+  function db_select() {
+    return db_select('notifications_queue', 'q')->condition('name', $this->name);
+  }
+  /**
+   * Get select * query for this queue
+   */
+  function db_select_all() {
+    return $this->db_select()->fields('q');
+  }
+  /**
+   * Get update * query for this queue
+   */
+  function db_update() {
+    return db_update('notifications_queue')->condition('name', $this->name);
+  }
+  /**
+   * Get delete * query for this queue
+   */
+  function db_delete() {
+    return db_delete('notifications_queue')->condition('name', $this->name);
+  }
   /**
    * Callback for Drupal cron
    */
@@ -242,133 +332,12 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
     self::event_clean();   
   }
   
-  /**
-   * Controls and checks limits for queue processing
-   * It can be used by other modules to add their own limits here, like number of sms sent, etc...
-   * @param $op
-   *   'start' => Start the counters
-   *   'cron' => Special time adjustment for cron operations
-   *   'init' => Start a new counter with $value limit
-   *   'option' => Sets /gets options
-   *      - debug
-   *      - output Enables output for admin page
-   * @return
-   *   TRUE if we are yet under the processing limits
-   */
-  function process_control($op = 'check', $name = NULL, $value = NULL) {
-    switch ($op) {
-      case 'start':
-        $this->process_current = array('message' => 0, 'step' => 0, 'timer' => 0, 'row' => 0);
-        $defaults = variable_get('notifications_process_limit', array('time' => 0, 'message' => 0, 'row' => 0, 'percent' => MESSAGING_DEFAULT_CRON_PERCENT));
-        foreach ($defaults as $name => $value) {
-          if ($value && !isset($this->process_limit[$name])) {
-            $this->process_limit[$name] = $value;
-          }
-        }
-        timer_start('notifications_process');
-        break;
- 
-      case 'stop':
-        $timer = timer_stop('notifications_process');
-        $this->process_current['timer'] = $timer['time'];
-        return $timer;
 
-      case 'cron':
-        // Calculate time limit. We get the smaller of all these times in seconds
-        // There's an issue with poormanscron not setting the cron semaphore so it will default to current time
-        $timelimit = array();
-        $cronstart = variable_get('cron_semaphore', time());     
-        // Max execution time may be zero meaning no limit, then no limits based on this
-        if ($maxtime = ini_get('max_execution_time')) {
-          $timelimit[] =  $cronstart + $maxtime - NOTIFICATIONS_TIME_MARGIN;
-          if (!empty($this->process_limit['percent'])) {
-            $timelimit[] = time() + $maxtime * $this->process_limit['percent'] / 100;
-            unset($this->process_limit['percent']);
-          }
-        }
-        // This is an absolute limit, applies always if set
-        if (!empty($this->process_limit['time'])) {
-          $timelimit[] = time() + $this->process_limit['time'];
-        }
-        if ($timelimit) {
-          $this->process_limit['time'] = min($timelimit);
-        }
-        break;
-
-      case 'init':
-        $this->process_current[$name] = 0;
-        $this->process_limit[$name] = $value;
-        break;
-
-      case 'current':
-        // Return current value for counter
-        return isset($this->process_current[$name]) ? $this->process_current[$name] : 0;
-
-      case 'count':
-        $value =  $value ? $value : 1;
-        isset($this->process_current[$name]) ? ($this->process_current[$name] += $value) : $this->process_current[$name] = $value;
-        break;
-
-      case 'check':
-        // Check all limits till we find a false one
-        $this->process_current['time'] = time();
-        if (isset($this->process_limit)) {
-          foreach ($this->process_limit as $name => $value) {
-            if ($value && !empty($this->process_current[$name]) && $this->process_current[$name] >= $value) {
-              watchdog('notifications', 'Reached processing limit on queue processing: %name = %value', array('%name' => $name, '%value' => $value));
-              return FALSE;
-            }
-          }
-        }
-        return TRUE;
-
-      case 'results':
-        // Return array of variables needed to print out some messages
-        return array(
-          '@rows' => $this->process_current['row'],
-          '@messages' => $this->process_current['message'],
-          '@time' => $this->process_current['timer'],
-        );
-    } 
-  }
-  
-  /**
-   * Get / set limit value for counter
-   */
-  function process_limit($name, $value = NULL) {
-    if (isset($value)) {
-      $this->process_limit[$name] = $value;
-    }
-    else {
-      return isset($this->process_limit[$name]) ? $this->process_limit[$name] : 0;
-    }    
-  }
-  
-  /**
-   * Get / set process option
-   */
-  function process_option($name, $value = NULL) {
-    // Get / set value for option
-    if (isset($value)) {
-      $this->process_options[$name] = $value;
-    }
-    else {
-      return isset($this->process_options[$name]) ? $this->process_options[$name] : FALSE;
-    }    
-  }  
-  
-  /**
-   * Get message template for notifications
-   * 
-   * This is a hidden variable that can be overridden to use a different class: notifications_message_template
-   */
-  public static function message_template($params = NULL) {
-    $class = variable_get('notifications_message_template', 'Notifications_Message');
-    return new $class($params);
-  }
 
   /**
    * Queue events for notifications adding query conditions from plug-ins
+   * 
+   * This queues in different queues, depending on the 'queue' value in notificaitons table
    * 
    * This is an example of the resulting query
    *
@@ -386,7 +355,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    * @return int
    *   Number of queued rows
    */
-  function queue_event($event) {
+  public static function queue_event($event) {
     if ($event_conditions = $event->get_conditions()) {
       $insert = db_insert('notifications_queue')
         ->fields(array('name', 'uid', 'mdid', 'send_method', 'sid', 'send_interval', 'language', 'conditions', 'created', 'eid'));
@@ -412,31 +381,471 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
       $select->addTag('notifications queue event');
       $select->addMetaData('event', $event);
       $insert->from($select)->execute();
-    notifications_include('object.inc');
-    notifications_include('query.inc');
+    }
+    // Return number of queued rows
+    return db_result(db_query('SELECT COUNT(*) FROM {notifications_queue} WHERE eid = :eid', array(':eid' => $event->eid)));
+  }
+  /**
+   * Get default cron process for this queue
+   * 
+   * @return Notifications_Cron_Process
+   */
+  function default_process() {
+    return Notifications_Queue_Process::build()
+      ->set_limits($limits)
+      ->add_worker(new Notifications_Queue_Worker($this));
+  }
+  /**
+   * Acquire lock for this queue
+   */
+  function lock_acquire($name) {
+    return lock_acquire('notifications_queue-' . $this->name . '-' . $name);
+  }
+  /**
+   * Release lock for this queue
+   */
+  function lock_release($name) {
+    return lock_release('notifications_queue-' . $this->name . '-' . $name);
+  }
+}
+
+/**
+ * Items from the queue
+ */
+class Notifications_Queue_Item extends Notifications_Object {
+  // Queue parameters
+  public $sqid;
+  public $name;
+  public $expired;
+  public $created;
+  public $data;
+  // Subscription parameters
+  public $sid;
+  public $uid;
+  public $mdid;
+  public $language;
+  public $type;
+  public $send_interval;
+  public $send_method;
+  public $send_time;
+  public $conditions;
+  public $destination;
+  // Event parameters
+  public $eid;
+  // Queue and batch objects it belongs to
+  protected $queue;
+  protected $batch;
+  // Temporary store
+  protected $events;
+  protected $subscriptions;
   
-    $query = array();
-    // Build big insert query using the query builder. The fields for this event type will be added by the plug-ins. 
-    // If no arguments retrieved, skip this step
-    if ($query_args = module_invoke_all('notifications_event', 'query', $event)) {
-      // Build a query skeleton and add parameters for each module separately
-      $query = notifications_query_event_queue($event);
-      foreach ($query_args as $query_params) {
-        $query = notifications_query_build($query_params, $query);
-      }
-      
-      // Give a chance to other modules to alter the query or empty it so we don't throw it
-      drupal_alter('notifications_query', $query, $event);
-      
-      // Finally we build the SELECT part of the query and glue it to the INSERT
-      if ($query) {
-        list($sql, $args) = notifications_query_sql($query);
-        db_query($sql, $args);
+  /**
+   * Get queue object
+   */
+  function get_queue() {
+    return $this->queue();
+  }
+  /**
+   * Delete item
+   */
+  function delete() {
+    $this->get_queue()->deleteItem($this);
+  }
+  /**
+   * Release item
+   */
+  function release() {
+    $this->get_queue()->releaseItem($this);
+  }
+  /**
+   * Process item: Build and send message
+   */
+  function process() {
+    if ($event = $this->get_event($this->eid)) {
+      return $event->build_template($this)
+        ->build_message($this)
+        ->send();
+    }
+    else {
+      return FALSE;
+    }
+  }
+
+  /**
+   * Get event object
+   */
+  function get_event($eid) {
+    return Notifications_Event::load($eid);
+  }
+}
+
+/**
+ * Queue process
+ */
+class Notifications_Queue_Process {
+  public $batch_size = 10;
+  protected $limit = array();
+  protected $current = array();
+  protected static $options;
+  // Optional language to process only rows in this language. Not used yet.
+  // This can be used to run different languages in different crons and prent static caching issues.
+  public $process_language = NULL;
+  // Start time
+  protected $start = 0;
+  /**
+   * Constructor from Queue and Worker
+   * 
+   * @param unknown_type $queue
+   * @param unknown_type $worker
+   */
+  public function __construct() {
+    $this->limit = $this->default_limits();
+    $this->option('batch_size', $this->batch_size);
+    $this->option('language' => $this->process_language);
+  }
+  /**
+   * Add worker to the process
+   */
+  public function add_worker($worker) {
+    $this->workers[] = $worker;
+    return $this;
+  }
+  /**
+   * Default queue name for this process
+   */
+  public static function queue_name() {
+    return 'queue';
+  }
+  /**
+   * Build with default values
+   */
+  public static function build() {
+    return new Notifications_Queue_Process();
+  }
+  /**
+   * Start process
+   */
+  public function start() {
+    $this->start = time();
+    $this->current = array('items' => 0, 'messages' => 0);
+  }
+
+  /**
+   * Run process
+   */
+  public function run() {
+    $this->start();
+    while ($this->check()) {
+      foreach ($this->workers as $key => $worker) {
+        if ($worker->fetch($this->limit)) {
+          $results = $worker->process($this->limit, $this->options);
+          $this->add_results($results);
+        }
+        else {
+          // The worker finished it's work, drop it
+          $worker->done();
+          unset($this->workers[$key]);
+        }
       }
     }
-    
-    // Return number of queued rows
-    return db_result(db_query('SELECT COUNT(*) FROM {notifications_queue} WHERE eid = %d', $event->eid));
+    return $this;
   }
+  /**
+   * Check we are under limits and we still have workers
+   */
+  function check() {
+    $current = $this->current;
+    $current['time'] = time();
+    $current['process'] = time() - $this->start;
+    foreach ($this->limit as $key => $value) {
+      if (isset($current[$key]) && $current[$key] > $value) {
+        return FALSE;
+      }
+    }
+    return !empty($this->workers);
+  }
+  /**
+   * Get current value
+   */
+  function current($type) {
+    return isset($this->current[$type]) ? $this->current[$type] : 0;
+  }
+  /**
+   * Add results to current values
+   */
+  function add_results($results) {
+    foreach ($results as $key => $value) {
+      $this->current[$key] = $this->current($key) + $value;
+    }
+  }
+  /**
+   * Set / unset limit for the process
+   * 
+   * @param $type
+   *   - item, Number of items to be processed
+   *   - message, Number of messages to be sent
+   *   - process, Total processing time
+   *   - time, Fixed time to finish
+   */
+  function set_limit($type, $value = NULL) {
+    if (isset($value)) {
+      $this->limit[$type] = $value;
+    }
+    elseif (isset($this->limit[$type])) {
+      unset($this->limit[$type]);
+    }
+    return $this;
+  }
+  /**
+   * Set array of limits
+   */
+  function set_limits($limits) {
+    foreach ($limits as $type => $value) {
+      $this->set_limit($type, $value);
+    }
+    return $this;
+  }
+  /**
+   * Default limits
+   */
+  protected function default_limits() {
+    return variable_get('notifications_process_limits', array('items' => 10, 'messages' => 10, 'process' => 60);
+  }
+  /**
+   * Get / set process option (static = same for all processes)
+   */
+  public static function option($name, $value = NULL) {
+    // Get / set value for option
+    if (isset($value)) {
+      self::$process_options[$name] = $value;
+    }
+    else {
+      return isset(self::$process_options[$name]) ? self::$process_options[$name] : FALSE;
+    }    
+  }
+  /**
+   * Return array of variables needed to print out some messages
+   */ 
+  function get_results() {
+    return array(
+      '@rows' => $this->current['items'],
+      '@messages' => $this->current['messages'],
+      '@time' => time() - $this->start,
+    );
+  }
+  /**
+   * Start process from cron
+   */
+  public function cron() {
+    $this->cron_prepare();
+    return $this->run();
+  }
+  /**
+   * Prepare process for cron
+   */
+  public function cron_prepare() {
+    // Calculate time limit. We get the smaller of all these times in seconds
+    // There's an issue with poormanscron not setting the cron semaphore so it will default to current time
+    $timelimit = array();
+    $cronstart = REQUEST_TIME;     
+    // Max execution time may be zero meaning no limit, then no limits based on this
+    if ($maxtime = ini_get('max_execution_time')) {
+      $timelimit[] =  $cronstart + $maxtime - NOTIFICATIONS_TIME_MARGIN;
+    }
+    // This is an absolute limit, applies always if set
+    if (!empty($this->limits['process'])) {
+      $timelimit[] = time() + $this->limits['process'];
+    }
+    if ($timelimit) {
+      $this->limits['time'] = min($timelimit);
+    }
+    return $this;  
+  }
+}
+
+/**
+ * Queue worker. This base class processes items one at a time
+ */
+class Notifications_Queue_Worker {
+  protected $queue;
+  // Items currently being processed
+  protected $process;
+  // Results for this process
+  protected $result = array();
+  // 
+  protected $options;
+  // Unique id for this worker, see _lock_id() 
+  protected $uniqueid;
+
+  public function __construct($queue, $options = array()) {
+    $this->queue = $queue;
+    $this->options = $options + $this->default_options();
+  }
+  /**
+   * Get item to process, one at a time
+   */
+  function fetch($limits) {
+    $this->reset();
+    $this->process = $this->queue->claimItem($this->options['lease_time']);
+    return $this->process;
+  } 
+  /**
+   * Process current item / batch
+   * 
+   * @param $process Notifications_Queue_Process
+   */
+  function process($limits) {
+    $result = $this->process_item($item);
+    $this->count($result ? 'success' : 'error');
+    return $this->result;
+  }
+  /**
+   * The worker has finished and may need some clean up
+   */
+  function done() {
+    return TRUE;
+  }
+  /**
+   * Process queued item, one at a time
+   */
+  function process_item($item) {
+    $this->count('items');
+    $result = $item->process();
+    $item->delete();
+    return $result;
+  }
+  /**
+   * Reset batch results
+   */
+  function reset() {
+    $this->process = NULL;
+    $this->result = array('items' => 0, 'messages' => 0, 'success' => 0, 'error' => 0);
+  }
+  /**
+   * Increase counter
+   */
+  function count($type, $number = 1) {
+    $this->result[$type] += $number;
+  }
+  /**
+   * Get unique id for this worker
+   */
+  function uniqueid() {
+    if (!isset($this->uniqueid)) {
+      $this->uniqueid = uniqid(mt_rand(), TRUE);
+    }
+    return $this->uniqueid;
+  }
+  /**
+   * Get default options
+   */
+  protected function default_options() {
+    return array('lease_time' => 60);
+  }
+}
+
+/**
+ * Queue worker. Processes batches
+ */
+class Notifications_Batch_Worker extends Notifications_Queue_Worker{
+  /**
+   * Create a new batch object
+   */
+  abstract function create_batch();
+  /**
+   * Get item to process, one at a time
+   */
+  function fetch($limits) {
+    $this->reset();
+    $this->process = $this->claim($limits);
+    return $this->process;
+  }
+  /**
+   * Claim items from the queue
+   */
+  function claim($limits) {
+    $batch_size = $options['batch_size'];
+    $this->queue->claimBatch($this->create_batch());
+  }
+  /**
+   * Process current batch
+   * 
+   * @param $process Notifications_Queue_Process
+   */
+  function process($limits) {
+    $this->result = $this->process_batch($this->process);
+    return $this->result;
+  }
+  /**
+   * Process queued item, one at a time
+   * 
+   * @return process result array
+   */
+  function process_batch($batch, $result = array()) {
+    $result = $batch->process();
+    $result['items'] = $this->count('items', $batch->count());
+    $batch->delete();
+    return $result;
+  }
+  /**
+   * Get default options
+   */
+  protected function default_options() {
+    return array('batch_size' => 10) + parent::default_options();
+  }
+}
+
+/**
+ * Each one of the elements of the queue
+ * 
+ * Items are grouped by Event so each group corresponds to an Event
+ */
+class Notifications_Queue_Batch extends Notifications_Queue_Item {
+  protected $items;
+  protected $events;
+  protected $subscriptions;
+  // Array of field => value pairs used as criteria for this batch
+  public $criteria;
   
+  /**
+   * Add each item
+   */
+  function add_item($item) {
+    $this->items[$item->qid] = $item;
+  }
+  /**
+   * Get all pending
+   */
+  function get_items() {
+    return $this->items;
+  }
+  /**
+   * Count number of items
+   */
+  function count() {
+    return !empty($this->items) ? count($this->items) : 0;
+  }
+  /**
+   * Delete all items
+   */
+  function delete() {
+    return $this->get_queue()->deleteBatch($this);   
+  }
+  /**
+   * Release all items
+   */
+  function release() {
+    return $this->get_queue()->releaseBatch($this);
+  }
+  /**
+   * Get key, unique per batch type
+   */
+  function get_key() {
+    return 'notifications_queue_batch';
+  }
+  /**
+   * Get batch conditions
+   */
+  function batch_conditions() {
+  }
 }

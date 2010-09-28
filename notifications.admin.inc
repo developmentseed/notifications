@@ -55,7 +55,7 @@ function notifications_admin_status_page() {
   
   // Subscriptions summary by type
   $header = array(t('Type'), t('Number'));
-  $result = db_query("SELECT type, count(*) AS count FROM {notifications} GROUP BY type");
+  $result = db_query("SELECT type, count(*) AS count FROM {notifications_subscription} GROUP BY type");
   $count = 0;
   $types = notifications_subscription_types();
   $rows = array();
@@ -71,7 +71,7 @@ function notifications_admin_status_page() {
   
   // Summary by sending method
   $header = array(t('Method'), t('Number'));
-  $result = db_query("SELECT send_method, count(*) AS count FROM {notifications} GROUP BY send_method");
+  $result = db_query("SELECT send_method, count(*) AS count FROM {notifications_subscription} GROUP BY send_method");
   $rows = array();
   while ($subs = db_fetch_object($result)) {
     $name = messaging_method_info($subs->send_method, 'title');
@@ -269,7 +269,7 @@ function notifications_send_intervals_form_submit($form, &$form_state) {
   // Update orphaned notifications with invalid send interval
   $valid = array_keys($intervals);
   $params = array_merge(array(variable_get('notifications_default_send_interval', 0)), $valid);
-  db_query('UPDATE {notifications} SET send_interval = %d WHERE send_interval NOT IN (' . db_placeholders($valid) . ')', $params);
+  db_query('UPDATE {notifications_subscription} SET send_interval = %d WHERE send_interval NOT IN (' . db_placeholders($valid) . ')', $params);
   if ($updated = db_affected_rows()) {
     drupal_set_message(format_plural($updated, 'Updated a subscription with invalid interval.', 'Updated @count subscriptions with invalid intervals.'));
   }
@@ -336,7 +336,7 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
   // Instead we do a cache refresh and re-check enabled / disabled types
   drupal_static_reset('notifications_subscription_type_enabled');
   $types = notifications_subscription_type_enabled();
-  $sql_update = 'UPDATE {notifications} SET status = %d WHERE status = %d';
+  $sql_update = 'UPDATE {notifications_subscription} SET status = %d WHERE status = %d';
   $enabled = $disabled = 0;
 
   if ($types) {

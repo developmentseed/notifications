@@ -197,7 +197,7 @@ function notifications_custom_fields_form($form_state, $custom_type) {
         '#type' => 'hidden', '#value' => $data['type'],
       );
       $form['fields']['name'][$fid] = array(
-        '#value' => notifications_subscription_fields($data['type'], 'name'),
+        '#value' => notifications_field_type($data['type'], 'name'),
       );
       $form['fields']['delete'][$fid] = array(
         '#type' => 'checkbox',
@@ -221,7 +221,7 @@ function notifications_custom_fields_form($form_state, $custom_type) {
   }
   $form['fields']['name']['new'] = array(
     '#type' => 'select',
-    '#options' => notifications_subscription_fields(NULL, 'name'),
+    '#options' => notifications_field_type(NULL, 'name'),
   );
   $form['fields']['delete']['new'] = array('#value' => t('new'));
   $form['fields']['edit']['new'] = array(
@@ -269,12 +269,12 @@ function notifications_custom_fields_form_submit($form, $form_state) {
  * Update all fields for this subscription type
  */
 function notifications_custom_fields_update_all($subscription) {
-  if ($count = db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE type = '%s'", $subscription->type))) {
+  if ($count = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE type = '%s'", $subscription->type))) {
     // Delete all fields for this subscription type
-    db_query("DELETE FROM {notifications_fields} WHERE sid IN (SELECT sid FROM {notifications} WHERE type = '%s')", $subscription->type);
+    db_query("DELETE FROM {notifications_fields} WHERE sid IN (SELECT sid FROM {notifications_subscription} WHERE type = '%s')", $subscription->type);
     // Create the new fields
     foreach ($subscription->get_fields() as $field) {
-      db_query("INSERT INTO {notifications_fields} (sid, field, value, intval) SELECT sid, '%s', '%s', %d FROM {notifications} WHERE type = '%s'", $field->field, $field->value, (int)$field->value, $subscription->type);
+      db_query("INSERT INTO {notifications_fields} (sid, field, value, intval) SELECT sid, '%s', '%s', %d FROM {notifications_subscription} WHERE type = '%s'", $field->field, $field->value, (int)$field->value, $subscription->type);
     }
     drupal_set_message(t('@count subscriptions have been updated with the new values.', array('@count' => $count)));
   }
@@ -290,7 +290,7 @@ function notifications_custom_delete_confirm(&$form_state, $custom) {
   $message = t('Are you sure you want to delete the subscription type %type?', array('%type' => $custom->name));
   $caption = '';
 
-  $num_nodes = db_result(db_query("SELECT COUNT(*) FROM {notifications} WHERE type = '%s'", $custom->type));
+  $num_nodes = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE type = '%s'", $custom->type));
   if ($num_nodes) {
     $caption .= '<p>'. format_plural($num_nodes, '<strong>Warning:</strong> there is currently 1 %type subscription on your site. It may not be able to be displayed or edited correctly, once you have removed this content type.', '<strong>Warning:</strong> there are currently @count %type subscriptions on your site. They may not be able to be displayed or edited correctly, once you have removed this subscription type.', array('%type' => $custom->name)) .'</p>';
     $form['subscriptions'] = array(

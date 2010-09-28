@@ -5,7 +5,7 @@
  * Implementation of hook_schema()
  */
 function notifications_schema() {
-  $schema['notifications'] = array(
+  $schema['notifications_subscription'] = array(
     'description' => 'The base table for subscriptions',
     'fields' => array(
       'sid' => array(
@@ -67,7 +67,7 @@ function notifications_schema() {
     'description' => 'Conditions for subscriptions, there may be none or many for each subscription.',
     'fields' => array(
       'sid' => array(
-        'description' => 'The {notifications}.sid, subscription this condition belongs to.',
+        'description' => 'The {notifications_subscription}.sid, subscription this condition belongs to.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'
       ),
       'field' => array(
@@ -92,45 +92,28 @@ function notifications_schema() {
         'description' => 'Unique event id',
         'type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11',
       ),
-      'module' => array(
-        'description' => 'Module producing the event',
-        'type' => 'varchar', 'length' => '255', 'not null' => FALSE
-      ),
       'type' => array(
         'description' => 'Event type: node, feed, etc..',
         'type' => 'varchar', 'length' => '255', 'not null' => FALSE
       ),
-      'action' => array(
-        'description' => 'Event action: insert, update, etc.',
-        'type' => 'varchar', 'length' => '255', 'not null' => FALSE
-      ),
-      'typekey' => array(
-        'description' => 'Event key, will depend on type and action.',
-        'type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '',
-      ),
-      'oid' => array(
-        'description' => 'Object id of the primary object for the event. I.e. for node events it will be nid',
+      'created' => array(
+        'description' => 'Unix timestamp, when it was created.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
       ),
-      'language' => array(
-        'description' => 'Language.',
-        'type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''
-      ),
-      'uid' => array(
-        'description' => 'Id of the user causing the event.',
-        'type' => 'int', 'not null' => FALSE, 'disp-width' => '11'
-      ),
-      'params' => array(
-        'description' => 'Serialized event parameters.',
-        'type' => 'text', 'not null' => FALSE, 'serialize' => TRUE,
-      ),
-      'created' => array(
+      'updated' => array(
         'description' => 'Unix timestamp, when it was created.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
       ),
       'counter' => array(
         'description' => 'Keeps a count of the notifications queued for this event.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
+      ),
+      'data' => array(
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'The full event object.',
       ),
     ),
     'primary key' => array('eid'),
@@ -168,13 +151,13 @@ function notifications_schema() {
         'size' => 'big',
         'serialize' => TRUE,
         'description' => 'The arbitrary data for the item.',
-      ),      
+      ),
       'eid' => array(
         'description' => 'The {notifications_event}.eid of the Event producing this notification.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11',
       ),
       'sid' => array(
-        'description' => 'The {notifications}.sid of the Subscription producing this notification.',
+        'description' => 'The {notifications_subscription}.sid of the Subscription producing this notification.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11',
       ),
       'uid' => array(
@@ -186,7 +169,7 @@ function notifications_schema() {
         'type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''
       ),
       'type' => array(
-        'description' => 'The {notifications}.type of the Subscription producing this notification.',
+        'description' => 'The {notifications_subscription}.type of the Subscription producing this notification.',
         'type' => 'varchar', 'length' => '255', 'not null' => FALSE,
       ),
       'send_interval' => array(
@@ -202,7 +185,7 @@ function notifications_schema() {
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10',
       ),
       'conditions' => array(
-        'description' => 'The {notifications}.conditions counter, just for query convenience.',
+        'description' => 'The {notifications_subscription}.conditions counter, just for query convenience.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10',
       ),
       'destination' => array(
@@ -267,3 +250,7 @@ function notifications_uninstall() {
   }
 }
 
+/**
+ * Update from 6.x to 7.x
+ */
+// Rename table: notifications to notifications_subscription
