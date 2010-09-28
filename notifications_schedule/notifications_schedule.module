@@ -1,0 +1,20 @@
+<?php
+// $Id: notifications.module,v 1.6.2.9.2.50.2.18.2.67 2010/07/22 11:57:49 jareyero Exp $
+
+/**
+ * @file
+ * Notifications module
+ *
+ * This is the base module of the notifications framework. It handles event processing, queueing,
+ * message composition and sending.
+ * 
+ * Different subscriptions types are provided by plug-in modules implementing hook_notifications()
+ * Most of the UI is implemented in notifications_ui module
+ * The messaging framework is used for message delivery
+ * Token module is used for token replacement in messages 
+ * 
+ * This is based on the previous subscriptions module
+ * 
+ * Development Seed, http://www.developmentseed.org, 2007 
+ *
+ */
