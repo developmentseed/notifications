@@ -233,7 +233,7 @@ function notifications_subscriptions_filters($admin = FALSE) {
   $filters['type'] = array(
     'title' => t('type'),
     // If not admin page, check access to each type
-    'options' => notifications_subscription_types(NULL, 'title', !$admin),
+    'options' => notifications_subscription_user_types(NULL, 'title', !$admin),
   );
   $filters['send_method'] = array(
     'title' => t('method'),
@@ -387,7 +387,7 @@ function notifications_multiple_delete_confirm_validate($form, &$form_state) {
  */
 function notifications_multiple_delete_confirm_submit($form, &$form_state) {
   if ($form_state['values']['confirm']) {
-    notifications_subscription_delete(array_keys($form_state['values']['items']));
+    Notifications_Subscription::delete_subscription(array_keys($form_state['values']['items']));
     drupal_set_message(t('The subscriptions have been deleted.'));
   }
   return;
@@ -465,7 +465,8 @@ function notifications_subscriptions_filter_form_submit($form, &$form_state) {
  *
  * @ingroup themeable
  */
-function theme_notifications_manage_subscriptions($form) {
+function theme_notifications_manage_subscriptions($variables) {
+  $form = $variables['form'];
   // If there are rows in this form, then $form['title'] contains a list of
   // the title form elements.
   $has_posts = isset($form['type']) && is_array($form['type']);
@@ -531,7 +532,8 @@ function theme_notifications_manage_subscriptions($form) {
  *
  * @ingroup themeable
  */
-function theme_notifications_subscriptions_filter_form($form) {
+function theme_notifications_subscriptions_filter_form($variables) {
+  $form = $variables['form'];
   $output = '';
   $output .= '<div id="notifications-admin-filter">';
   $output .= drupal_render($form['filters']);

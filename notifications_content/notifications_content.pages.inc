@@ -71,7 +71,7 @@ function notifications_content_test_template_form($form_state) {
   $form['subscription_type'] = array(
     '#title' => t('Subscription type'),
     '#type' => 'select',
-    '#options' => notifications_subscription_types(NULL, 'title'),
+    '#options' => notifications_subscription_type(NULL, 'title'),
     '#default_value' => isset($form_state['values']['subscription_type']) ? $form_state['values']['subscription_type'] : NULL,
     '#description' => t('Some modules may define a different template for their subscription types.'),
   );

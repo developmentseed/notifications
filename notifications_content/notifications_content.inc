@@ -9,8 +9,31 @@
  * Thread subscription
  */
 class Notifications_Node_Subscription extends Notifications_Subscription_Type {
-  public $field_types = array('node');
+  public $field_types = array('node:nid');
   public $field_values = array(NULL);
+}
+
+/**
+ * Node type subscription
+ */
+class Notifications_Node_Type_Subscription extends Notifications_Subscription_Type {
+  public $field_types = array('node:type');
+  public $field_values = array(NULL);
+}
+
+/**
+ * Author subscription
+ */
+class Notifications_Author_Subscription extends Notifications_Subscription_Type {
+  public $field_types = array('node:uid');
+  public $field_values = array(NULL);
+}
+/**
+ * Node type and author subscription
+ */
+class Notifications_Node_Type_Author_Subscription extends Notifications_Subscription_Type {
+  public $field_types = array('node:type', 'node:uid');
+  public $field_values = array(NULL, NULL);
 }
 
 /**
@@ -36,6 +59,11 @@ class Notifications_Node_Event extends Notifications_Event {
 }
 
 class Notifications_Comment extends Notifications_Object {
+  public $type = 'comment';
+
+  public function get_title() {
+    return t('Comment');
+  }
   /**
    * Load related object or data
    */
@@ -60,6 +88,11 @@ class Notifications_Comment extends Notifications_Object {
  * Node type object
  */
 class Notifications_Node_Type extends Notifications_Object {
+  public $type = 'nodetype';
+  
+  public function get_title() {
+    return t('Content type');
+  }
   /**
    * Load related object or data
    */
@@ -82,6 +115,13 @@ class Notifications_Node_Type extends Notifications_Object {
 
 class Notifications_Node_Type_Field extends Notifications_Field_Select {
   public $type = 'node:type';
+  
+  public function get_title() {
+    return t('Content type');
+  }
+  public function get_description() {
+    return t('Content type');
+  }  
   /**
    * Select options, content type list
    */
@@ -113,7 +153,7 @@ class Notifications_Node_Comment_Event extends Notifications_Node_Event {
 /**
  * Message templates for node events. Base class.
  */
-class Notifications_Node_Event_Template extends Notifications_Message_Template {
+class Notifications_Node_Event_Template extends Notifications_Template {
 
 }
 
@@ -143,7 +183,7 @@ class Notifications_Node_Update_Template extends Notifications_Node_Event_Templa
     return array('node:nid', 'author:uid');
   }
   public function digest_line() {
-    t('The [type-name] has been updated by [author-name]')
+    t('The [type-name] has been updated by [author-name]');
   }  
 }
 
@@ -161,3 +201,7 @@ class Notifications_Node_Comment_Template extends Notifications_Node_Event_Templ
     return t('New comment by [comment-author-name]: [comment-title]');
   }  
 }
+
+/**
+ * 
+ */

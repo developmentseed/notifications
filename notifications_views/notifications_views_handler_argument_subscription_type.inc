@@ -24,8 +24,7 @@ class notifications_views_handler_argument_subscription_type extends views_handl
   }
 
   function subscription_type($type) {
-    $output = notifications_subscription_types($type);
-    $output = $type['title'];
+    $output = notifications_subscription_type($type. 'title');
     if (empty($output)) {
       $output = t('Unknown');
     }

@@ -242,7 +242,7 @@ function notifications_custom_account_update($account, $update) {
       }
       elseif (!$value && $subscription->is_instance()) {
         // Disable existing subscription
-        notifications_subscription_delete($subscription->sid);
+        Notifications_Subscription::delete_subscription($subscription->sid);
         $changed++;
       }
     }
@@ -317,7 +317,7 @@ function notifications_custom_rebuild() {
  */
 function notifications_custom_delete($type, $instances = FALSE) {
   if ($instances) {
-    notifications_delete_subscriptions(array('type' => $type));
+    Notifications_Subscription::delete_multiple(array('type' => $type));
   }
   db_query("DELETE FROM {notifications_custom} WHERE type = '%s'", $type);
 }
@@ -355,7 +355,7 @@ function notifications_custom_load($key) {
  *   Custom subscription template (object) or type (string)
  */
 function notifications_custom_build_subscription($template) {
-  $template = is_object($template) || is_array($template) ? $template : notifications_subscription_types($template);
+  $template = is_object($template) || is_array($template) ? $template : notifications_subscription_type($template);
   if ($template) {
     return Notifications_Custom_Subscription::build($template);
   }

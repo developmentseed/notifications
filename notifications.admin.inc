@@ -57,7 +57,7 @@ function notifications_admin_status_page() {
   $header = array(t('Type'), t('Number'));
   $result = db_query("SELECT type, count(*) AS count FROM {notifications_subscription} GROUP BY type");
   $count = 0;
-  $types = notifications_subscription_types();
+  $types = notifications_subscription_type();
   $rows = array();
   while ($stype = db_fetch_object($result)) {
     $rows[] = array(
@@ -284,7 +284,7 @@ function notifications_send_intervals_form_submit($form, &$form_state) {
  */
 function notifications_admin_subscriptions_settings() {
   // Enabled subscription types
-  $types = array_map('notifications_format_title_description', notifications_subscription_types());
+  $types = array_map('notifications_format_title_description', notifications_subscription_type());
   $enabled = notifications_subscription_type_enabled();
   
   $form['subscriptions'] = array(
@@ -370,7 +370,8 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
 /**
  * Build a table with send intervals
  */
-function theme_notifications_send_intervals_form($element) {
+function theme_notifications_send_intervals_form($variables) {
+  $element = $variables['element'];
   $output = ''; //drupal_render($element['digest']);
   $header = array(array('data' => t('Time'), 'colspan' => 2), t('Display name'), t('Format'), t('Default'));
   foreach (element_children($element['intervals']) as $key) {
@@ -466,7 +467,8 @@ function notifications_template_list() {
 /**
  * Theme subscriptions list
  */
-function theme_notifications_form_table($element) {
+function theme_notifications_form_table($variables) {
+  $element = $variables['element'];
   $output = '';
   if ($fields = element_children($element)) {
     $header = $element['#header'];

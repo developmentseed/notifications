@@ -8,7 +8,7 @@
 /**
  * Base template class
  */
-class Notifications_Template() {
+class Notifications_Template {
   public $elements = array();
   // Store multiple object types
   protected $objects = array();

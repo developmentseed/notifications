@@ -179,7 +179,7 @@ function notifications_tags_taxonomy($op, $type, $array = NULL) {
       switch ($type) {
         case 'term':
           // takes care of individual term deletion and vocab deletion because taxonomy iterates through all term delete hooks on the latter
-          notifications_delete_subscriptions(array('event_type' => 'node'), array('tid' => $array['tid']), FALSE);
+          Notifications_Subscription::delete_multiple(array(), array('term:tid' => $array['tid']), FALSE);
           break;
       }
       break;

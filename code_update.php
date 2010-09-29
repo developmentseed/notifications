@@ -275,7 +275,7 @@ function notifications_object_options_form_submit($form, $form_state) {
     }
     elseif (!$value && $subscription->is_instance()) {
       // we unchecked an enabled subscription
-      notifications_subscription_delete($subscription->sid);
+      Notifications_Subscription::delete_subscription($subscription->sid);
       $disabled++;
     }
   }
@@ -459,69 +459,6 @@ function notifications_load_subscription($subs, $refresh = FALSE) {
     return $subscriptions[$subs];
   }
 }
-
-/**
- * Delete subscription and clean up related data, included the static cache
- * 
- * It also removes pending notifications related to that subscription 
- * 
- * @param $sid
- *   Subscription object or sid or array of sids of subscription/s to delete
- */
-function notifications_subscription_delete($sid) {
-  $sid = is_object($sid) ? $sid->sid : $sid;
-  $cache = &drupal_static('notifications_load_subscription');
-
-  if (is_array($sid)) {
-    $where = 'sid IN (' . db_placeholders($sid) . ')';
-    if ($cache) {
-      $cache = array_diff_key($cache, array_flip($sid));;
-    }
-  }
-  else {
-    $where = "sid = %d";
-    $cache[$sid] = NULL;
-  }
-  foreach (array('notifications_subscription', 'notifications_subscription_fields') as $table) {
-    db_query("DELETE FROM {". $table ."} WHERE " . $where, $sid);
-  }
-  // Delete queued notifications for this subscription
-  notifications_queue()->queue_delete(array('sid' => $sid));
-}
-
-/**
- * Delete multiple subscriptions and clean up related data (pending notifications, fields).
- * 
- * Warning: If !$limit, it will delete also subscriptions with more conditions than the fields passed.
- * 
- * @param array $params
- *   Array of multiple conditions in the notifications table to delete subscriptions
- * @param array $field_conditions
- *   Array of multiple conditions in the notifications_fields table to delete subscriptions
- * @param $limit
- *   Whether to limit the result to subscriptions with exactly that condition fields
- *   
- * @return int
- *   Number of deleted subscriptions
- */
-function notifications_delete_subscriptions($params, $field_conditions = array(), $limit = FALSE) {
-  notifications_include('query.inc');
-
-  // For exact condition fields we add one more main condition.
-  if ($limit) {
-    $params += array('conditions' => count($field_conditions));
-  }
-   // This will get partially loaded objects, only with sid field
-  $query['select'][] = 's.sid';
-  $subscriptions = notifications_query_subscriptions($params, $field_conditions, $query, FALSE);
-
-  // This is the actual deletion, pass the array of sids
-  if ($subscriptions) {
-    notifications_subscription_delete(array_keys($subscriptions));
-  }
-  return $subscriptions ? count($subscriptions) : 0;
-}
-
 
 /**
  * Get subscriptions that match a set of conditions.
@@ -947,7 +884,7 @@ function notifications_notifications_subscription($op, $subscription = NULL, $ac
     case 'access':
       // First we check valid subscription type
       $access = FALSE;
-      if ($subscription->type && ($info = notifications_subscription_types($subscription->type))) {
+      if ($subscription->type && ($info = notifications_subscription_type($subscription->type))) {
         // To allow mixed subscription types to work we dont have a fixed field list
         // Then check specific access to this type. Each type must have a permission
         if (!empty($info['access callback'])) {
@@ -996,66 +933,6 @@ function notifications_notifications_event($op, $event, $account = NULL) {
       // Invoke old hook for backwards compatibility
       return module_invoke_all('notifications', 'event load', $event);
   }
-}
-
-/**
- * List of send intervals, translated.
- */
-function notifications_send_intervals($account = NULL) {
-  $list = &drupal_static(__FUNCTION__);
-  if ($account && !$account->uid && function_exists('notifications_anonymous_send_intervals')) {
-    return notifications_anonymous_send_intervals();
-  }
-  if (!isset($intervals)) {
-    if ($intervals = variable_get('notifications_send_intervals', FALSE)) {
-      foreach ($intervals as $key => $name) {
-        $list[$key] = notifications_translate("send_interval:$key:name", $name);
-      }
-    }
-    else {
-      $list = _notifications_send_intervals();
-    }
-  }
-  return $list;
-}
-
-/**
- * List of send intervals. These may be overriden in a variable.
- */
-function _notifications_send_intervals() {
-  return variable_get('notifications_send_intervals', array(
-      // -1 => t('Never'),
-      0 => t('Immediately'),
-      3600 => t('Every hour'),
-      43200 => t('Twice a day'),
-      86400 => t('Daily'),
-      604800 => t('Weekly'),  
-    )
-  );
-}
-
-
-/**
- * Get list of send methods for user or anonymous account
- */
-function notifications_send_methods($account) {
-  // We restrict send methods for anonymous accounts when edited by regular users
-  if (empty($account->uid) && function_exists('notifications_anonymous_send_methods')) {
-    return notifications_anonymous_send_methods();
-  }
-  else {
-    return _notifications_send_methods($account);
-  }
-}
-
-/**
- * List of send methods
- * 
- * @param $account
- *   Optional user account, for checking permissions against this account
- */
-function _notifications_send_methods($account = NULL) {
-  return variable_get('notifications_send_methods', messaging_method_list($account));
 }
 
 /**
@@ -1128,34 +1005,6 @@ function notifications_user_form_validate($form, &$form_state) {
 function notifications_user_form_submit($form, &$form_state) {
   module_load_include('pages.inc', 'notifications');
   return notifications_subscription_list_form_submit($form, $form_state);
-}
-
-/**
- * Implementation of hook_theme()
- */
-function notifications_theme() {
-  return array(
-    'notifications_send_intervals_form' => array(
-      'arguments' => array('element' => NULL),
-      'file' => 'notifications.admin.inc',
-    ),
-    'notifications_manage_subscriptions' => array(
-      'arguments' => array('form' => NULL),
-      'file' => 'notifications.manage.inc',
-    ),
-    'notifications_subscriptions_filter_form' => array(
-      'arguments' => array('form' => NULL),
-      'file' => 'notifications.manage.inc',
-    ),
-    'notifications_table_form' => array(
-      'arguments' => array('elements' => NULL),
-      'file' => 'notifications.pages.inc',
-    ),
-    'notifications_subscription_fields' => array(
-      'arguments' => array('form' => NULL),
-      'file' => 'notifications.pages.inc',
-    ),
-  );
 }
 
 /**

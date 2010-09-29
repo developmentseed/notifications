@@ -20,6 +20,15 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   // Format as item list (8 + 2(inline) + 1 (html))
   const FORMAT_LIST = 10;
   
+  // Blocked subscriptions, for blocked users
+  const STATUS_BLOCKED = 0;
+  // Enabled ones, will produce notifications
+  const STATUS_ACTIVE = 1;
+  // Temporarily disabled ones, maybe user on holidays
+  const STATUS_INACTIVE = 2;
+  // Disabled because the subscription type is disabled
+  const STATUS_DISABLED = -1;
+
   // Subscription type
   protected $type;
   // Subscription fields
@@ -211,6 +220,71 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   protected function invoke_all($op, $param = NULL) {
     return module_invoke_all('notifications_subscription', $op, $this, $param);    
+  }
+  /**
+   * Status list
+   */
+  public static function status_list() {
+    return array(
+      self::STATUS_ACTIVE => t('active'),
+      self::STATUS_BLOCKED => t('blocked'),
+      self::STATUS_INACTIVE => t('inactive'),
+      self::STATUS_DISABLED => t('disabled'),
+   );
+  }
+  
+  /**
+   * Delete multiple subscriptions and clean up related data (pending notifications, fields).
+   * 
+   * Was notifications_delete_subscriptions ($params, $field_conditions = array(), $limit = FALSE)
+   * 
+   * Warning: If !$limit, it will delete also subscriptions with more conditions than the fields passed.
+   * 
+   * @param array $params
+   *   Array of multiple conditions in the notifications table to delete subscriptions
+   * @param array $field_conditions
+   *   Array of multiple conditions in the notifications_fields table to delete subscriptions
+   * @param $limit
+   *   Whether to limit the result to subscriptions with exactly that condition fields
+   *   
+   * @return int
+   *   Number of deleted subscriptions
+   */
+  public static function delete_multiple($conditions, $field_conditions = array(), $limit = FALSE) {
+    $query = db_select('notifications_subscription', 's')->fields('s', array('sid'));
+    foreach ($condtions as $field => $value) {
+      $query->condition($field, $value);
+    }
+    // For exact condition fields we add one more main condition.
+    if ($limit) {
+      $query->condition('conditions', count($field_conditions));
+    }
+    if ($field_conditions) {
+      foreach ($field_conditions as $type => $value) {
+        $alias = $query->join('notifications_subscription_fields');
+        $query->condition($alias . '.type', $type);
+        $query->condition($alias . '.value', $value);
+      }
+    }
+    if ($sids = $query->execute()->fetchCol()) {
+      return self::delete_subscription($sids);
+    }
+  }
+
+  /**
+   * Delete subscription and clean up related data, included the static cache
+   * 
+   * Was: notifications_delte_subscription ($sid)
+   * It also removes pending notifications related to that subscription 
+   * 
+   * @param $sid
+   *   Subscription object or sid or array of sids of subscription/s to delete
+   */
+  public static function delete_subscription($sid) {
+    db_delete('notifications_subscription')->condition('sid', $sid)->execute();
+    db_delete('notifications_subscription_fields')->condition('sid', $sid)->execute();
+    // Delete queued notifications for this subscription
+    notifications_queue()->queue_delete(array('sid' => $sid));
   }
 }
 
@@ -430,18 +504,9 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
  * Notifications Subscription instance
  */
 class Notifications_Subscription_Instance extends Notifications_Subscription {
-  // Blocked subscriptions, for blocked users
-  const STATUS_BLOCKED = 0;
-  // Enabled ones, will produce notifications
-  const STATUS_ACTIVE = 1;
-  // Temporarily disabled ones, maybe user on holidays
-  const STATUS_INACTIVE = 2;
-  // Disabled because the subscription type is disabled
-  const STATUS_DISABLED = -1;
-
   // This class inherits some properties from Messaging_Object
-  // public $uid;
-  // public $language;
+  public $uid;
+  public $language;
   
   // Unique subscription id
   public $sid = 0;
@@ -532,8 +597,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     return notifications_subscription($template->type)->build_instance($template);
   }
 
-
- 
   /**
    * Produce fieldset to edit field values
    */
@@ -620,7 +683,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     // Make sure fields are set
     $this->set_fields();
     if (!empty($this->sid)) {
-      foreach (Notifications_Field::load_multiple(array('sid' => $this->sid))) as $field) {
+      foreach (Notifications_Field::load_multiple(array('sid' => $this->sid)) as $field) {
         $this->add_field($field);
       }       
     }
@@ -999,7 +1062,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Get subscription type data
    */
   function get_type($property = NULL) {
-    return empty($this->type) ? NULL : notifications_subscription_types($this->type, $property);
+    return empty($this->type) ? NULL : notifications_subscription_type($this->type, $property);
   }
 
   /**
@@ -1279,17 +1342,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   public function field_element($field, $title = FALSE, $required = FALSE ) {
     return $this->subscription_type()->field_element($field, $title, $required);
   }
-  /**
-   * Status list
-   */
-  public static function status_list() {
-    return array(
-      self::STATUS_ACTIVE => t('active'),
-      self::STATUS_BLOCKED => t('blocked'),
-      self::STATUS_INACTIVE => t('inactive'),
-      self::STATUS_DISABLED => t('disabled'),
-   );
-  }
+
 }
 
 /**

@@ -9,11 +9,11 @@ class Notifications_Taxonomy_Term_Subscription extends Notifications_Subscriptio
   public $field_values = array(NULL);
 
   public function get_title() {
-    return t('Tag subscription'),
+    return t('Tag subscription');
   }
   
   public function get_description() {
-    return t('Subscribe to content tagged with a given taxonomy term.')
+    return t('Subscribe to content tagged with a given taxonomy term.');
   }
 }
 
@@ -66,7 +66,23 @@ class Notifications_Taxonomy_Term_Field extends Notifications_Field_Autocomplete
    */
   function get_description() {
     return t('Taxonomy term');
-  } 
+  }
+   /**
+   * Get autocomplete path
+   */
+  function autocomplete_path() {
+    return 'taxonomy/autocomplete';
+  }
+
+  /**
+   * Parse value from autocomplete, get the first matching term
+   */
+  function autocomplete_parse($string) {
+    if ($terms = taxonomy_get_term_by_name($string)) {
+      $term = reset($terms);
+      return $term->tid;
+    }
+  }
 }
 
 /**

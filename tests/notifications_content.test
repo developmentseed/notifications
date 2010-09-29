@@ -107,12 +107,7 @@ class NotificationsContentTests extends NotificationsTestCase {
       'event_type' => 'node',
       'fields' => array('nid' => $node->nid),
     ));
-    
-    // Check generic info hooks with some random values
-    $this->assertEqual(notifications_subscription_types('thread', 'event_type'), 'node', 'Types hook retrieves right value.');
-    $event_type = notifications_event_types('node-update');
-    $this->assertEqual($event_type['digest'], array('node', 'nid'), 'Event types hook retrieves right value.');
-    
+        
     // Try permissions with anonymous user
     $user = drupal_anonymous_user();
     $this->assertEqual(notifications_user_allowed_subscription($user, $subs_thread), FALSE, 'Subscription not allowed for anonymous user');

@@ -254,7 +254,7 @@ abstract class Notifications_Field_Autocomplete extends Notifications_Field {
    * Format value for autocomplete
    */
   function autocomplete_value() {
-    return $this->get_title();
+    return $this->get_name();
   }
   /**
    * Parse value from autocomplete
@@ -405,12 +405,10 @@ class Notifications_User_Field extends Notifications_Field_Autocomplete {
   /**
    * Parse value from autocomplete
    */
-  function autocomplete_parse($string, $field = NULL) {
-    return notifications_user_name2uid($string, $field);
-  }
-
-  function autocomplete_value() {
-    return notifications_user_name_callback();
+  function autocomplete_parse($string) {
+    if ($user = user_load_by_name($string)) {
+      return $user->uid;
+    }
   }
 
   function format_name($format) {

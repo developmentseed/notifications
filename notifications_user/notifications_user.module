@@ -1,0 +1,102 @@
+<?php
+// $Id: notifications.module,v 1.6.2.9.2.50.2.18.2.67 2010/07/22 11:57:49 jareyero Exp $
+
+/**
+ * @file
+ * Notifications module - User subscriptions tabs
+ */
+
+/**
+ * Implementation of hook_menu()
+ */
+function notifications_user_menu() {
+  // User account tabs
+  $items['user/%user/notifications'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Notifications',
+    //'page callback' => 'notifications_page_user_overview',
+    //'page arguments' => array(1),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_user_overview', 1),
+    'access callback' => 'notifications_user_access',
+    'access arguments' => array(1),
+    'file' => 'notifications.pages.inc',
+  );
+  $items['user/%user/notifications/overview'] = array(
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'title' => 'Overview',
+    'weight' => -10,
+  );  
+  $items['user/%user/notifications/subscriptions'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Subscriptions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_manage_user_subscriptions', 1),
+    'access callback' => 'notifications_user_access',
+    'access arguments' => array(1, 'manage'),
+    'file' => 'notifications.manage.inc',
+  );
+  // Edit subscription under subscriptions tab
+  $items['user/%user/notifications/subscriptions/edit/%notifications_subscription'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Edit subscription',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_subscription_edit_form', 5),
+    'access callback' => 'notifications_subscription_access',
+    'access arguments' => array('edit', 5),
+    'file' => 'notifications.pages.inc',
+  );
+  // Delete subscription under subscriptions tab
+  $items['user/%user/notifications/subscriptions/delete/%notifications_subscription'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Delete subscription',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_form_unsubscribe_confirm', 5),
+    'access callback' => 'notifications_subscription_access',
+    'access arguments' => array('unsubscribe', 5),
+    'file' => 'notifications.pages.inc',
+  );
+  $items['user/%user/notifications/update/%'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => 'Update subscriptions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_update_user_subscriptions', 1, 4),
+    'access callback' => 'notifications_user_access',
+    'access arguments' => array(1, 'maintain'),
+    'file' => 'notifications.pages.inc',
+  );  
+  return $items;
+}
+
+/**
+ * Implementation of hook_permission()
+ */
+function notifications_user_permission() {
+  return array(
+    'manage own subscriptions' =>  array(
+      'title' => t('Manage own subscriptions'),
+      'description' => t('Access the subscriptions management tab to view and edit own subscriptions.'),
+    ),
+  );
+}
+
+/**
+ * Menu access callback for user subscriptions
+ * 
+ * @param $account
+ *   User account to which these subscriptions below
+ * @param $op
+ *   - maintain = create / delete
+ *   - manage = use the per account administration page
+ */
+function notifications_user_access($account, $op = 'maintain') {
+  global $user;
+  
+  if (user_access('administer notifications') || user_access('manage all subscriptions')) {
+    return TRUE;
+  }
+  else {
+    return $account->uid && $user->uid == $account->uid &&
+      (($op == 'maintain' && user_access('maintain own subscriptions')) || ($op == 'manage' && user_access('manage own subscriptions')));
+  }
+}

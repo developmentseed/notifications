@@ -52,7 +52,7 @@ function notifications_ui_menu() {
  * Implementation of hook_menu_alter()
  */
 function notifications_ui_menu_alter(&$items) {
-  foreach (notifications_subscription_types() as $type => $info) {
+  foreach (notifications_subscription_type() as $type => $info) {
     if (!empty($info['user page'])) {
       $items[$info['user page']]['access callback'] = 'notifications_ui_access_page';
       $items[$info['user page']]['access arguments'] = array($type, 1);
@@ -80,8 +80,7 @@ function notifications_ui_access_page($type, $account) {
   // Global user permissions
   if (notifications_access_user($account) && notifications_ui_type_enabled($type) && notifications_ui_user_options('page')) {    
     // Check specifics for this subscription type
-    $access = notifications_subscription_types($type, 'access');
-    return $access ? user_access($access, $account) : TRUE;
+    return notifications_subscription($type)->user_access($account);
   }
 }
 
@@ -128,13 +127,13 @@ function notifications_ui_type_enabled($type) {
 /**
  * Get info about subscription types, exclude custom types
  *
- * @see notifications_subscription_types()
+ * @see notifications_subscription_type()
  */
 function notifications_ui_subscription_types($type = NULL, $field = NULL) {
   static $types;
   
   if (!isset($types)) {
-    $types = notifications_subscription_types();
+    $types = notifications_subscription_type();
     // Filter out disabled types
     $types = array_intersect_key($types, notifications_subscription_type_enabled());
     // Filter out custom subscriptions

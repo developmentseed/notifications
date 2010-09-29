@@ -140,11 +140,11 @@ function notifications_page_unsubscribe($type = NULL, $id = NULL) {
     // Skip confirmation page when requested and the signature is ok
     if (notifications_page_check_confirmation()) {
       if ($subscription) {
-        notifications_subscription_delete($subscription->sid);
+        Notifications_Subscription::delete_subscription($subscription->sid);
         drupal_set_message(t('Your subscription has been removed.'));
       }
       elseif ($account) {
-        notifications_delete_subscriptions(array('uid' => $account->uid));
+        Notifications_Subscription::delete_multiple(array('uid' => $account->uid));
         drupal_set_message(t('All your subscriptions have been removed.'));
       }
       drupal_goto();
@@ -281,11 +281,11 @@ function notifications_form_unsubscribe_confirm_submit($form, &$form_state) {
   switch ($form_state['values']['op']) {
     case t('Unsubscribe'):
       if ($subscription) {
-        notifications_subscription_delete($subscription->sid);
+        Notifications_Subscription::delete_subscription($subscription->sid);
         drupal_set_message(t('Your subscription has been removed.'));
       }
       elseif ($account) {
-        notifications_delete_subscriptions(array('uid' => $account->uid));
+        Notifications_Subscription::delete_multiple(array('uid' => $account->uid));
         drupal_set_message(t('All your subscriptions have been removed.'));
       }
       $form_state['redirect'] = '';
@@ -451,7 +451,7 @@ function notifications_subscription_base_form_submit($form, &$form_state) {
       notifications_submit_subscription($subscription);
       break;
     case t('Delete'):
-      notifications_subscription_delete($subscription->sid);
+      Notifications_Subscription::delete_subscription($subscription->sid);
       drupal_set_message(t('Your subscription has been deleted.'));
       $form_state['redirect'] = 'user/'. $subscription->uid .'/notifications';
       break;
@@ -796,6 +796,7 @@ function notifications_subscription_list_form_values($form_values, $subscription
  * Theme function for fields in form
  */
 function theme_notifications_field_type($elements) {
+  $elements = $variables['element'];
   $header = array(t('Field type'), t('Value'));
   $rows = array();
   foreach (element_children($elements['name']) as $key) {
@@ -813,9 +814,9 @@ function theme_notifications_field_type($elements) {
 /**
  * Generic table formatting for forms
  */
-function theme_notifications_table_form($form) {
+function theme_notifications_table_form($variables) {
+  $form = $variables['form'];
   $output = '';
-
   // Get table information from special form properties
   $index = !empty($form['#table_index']) ? $form['#table_index'] : $form['#table_fields'][0];
   $header = !empty($form['#table_header']) ? $form['#table_header'] : array();
