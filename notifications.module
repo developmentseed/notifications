@@ -451,14 +451,6 @@ function notifications_event_type($typekey = NULL, $property = NULL, $default = 
 }
 
 /**
- * Get information about subscriptions fields
- */
-function notifications_field_type($type = NULL, $property = NULL, $default = NULL) {
-  $fields = notifications_info('subscription fields');
-  return messaging_array_info($fields, $type, $property, $default);
-}
-
-/**
  * Get info about object types
  *
  * @param $type
@@ -1476,7 +1468,18 @@ function notifications_notifications($op) {
         'title' => t('User'),
         'class' => 'Notifications_User',
       ); 
-      return $types;      
+      return $types;
+
+    case 'field types':
+      $types['node'] = array(
+        'title' => t('Node'),
+        'class' => 'Notifications_Node_Field'
+      );
+      $types['user'] = array(
+        'title' => t('User'),
+        'class' => 'Notifications_User_Field'
+      );
+      return $types;
   }
 }
 

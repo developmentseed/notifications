@@ -36,10 +36,11 @@ class Notifications_Field {
    * Build field instance
    */
   public static function build_type($type, $value, $index = NULL) {
-    if ($class = notifications_field($type, 'class')) {
+    if ($class = notifications_field_type($type, 'class')) {
       return new $class($type, $value, $index);
     }
     else {
+      // Unknown field type, let's build something
       $field = new Notifications_Field($value, $index);
       $field->type = $type;
       return $field;
@@ -49,35 +50,41 @@ class Notifications_Field {
    * Build from db object
    */
   public static function build_object($object) {
-    return self::build_type($object->type, $object->value, $object->index) { 
+    return self::build_type($object->type, $object->value, $object->index);
   }
   /**
    * Get field value name, plain text
    */
-  function getName() {
-    return ($name = $this->name()) ? check_plain($this->name()) : t('unknown');
+  function get_name() {
+    if (isset($this->name)) {
+      return check_plain($this->name);
+    }
+    else if ($object = $this->get_object()) {
+      return $this->name = $object->get_name();
+    }
   }
   /**
-   * Get title for object
+   * Get title for field
    */
-  function getTitle() {
+  function get_title() {
     return t('Field');
   }
   /**
    * Get description
    */
-  function getDescription() {
-    
+  function get_description() {
+    return t('Notifications field');
   }
+
   /**
-   * Get link
+   * Get link if this field is linked to an object
    */
-  function getLink($options = array()) {
-    if ($path = $this->get_path() && $name = $this->getName()) {
+  function get_link($options = array()) {
+    if ($path = $this->get_path() && $name = $this->get_name()) {
       return l($name, $path, $options);
     }
     else {
-      return $this->getName();
+      return $this->get_name();
     }
   }
   /**
@@ -130,15 +137,6 @@ class Notifications_Field {
   function user_access($account) {
     return $this->get_object()->user_access($account);
   }
-  /**
-   * Get related Notifications object
-   */
-  function get_object() {
-    if (!isset($this->object)) {
-      $this->object = Notifications_Object::build($this->object_type, $this->value);
-    }
-    return $this->object;
-  }
 
   /**
    * Get unique index for this field
@@ -154,6 +152,65 @@ class Notifications_Field {
       $this->name = $this->get_object()->value() ? $this->get_object()->name() : '';
     }
   }
+  /**
+   * Check if the field has a valid value
+   */
+  function valid_value() {
+    return $this->validate_value($this->value, $this->data_type);
+  }
+
+  /**
+   * Check if the value is valid for this field has a valid value
+   * 
+   * Was: notifications_field_valid_value($value, $type = NULL)
+   */
+  static function validate_value($value, $data_type = NULL) {
+    // A numeric value of zero is possible too, that's why the is_numeric()
+    if (!is_numeric($value) && empty($value)) {
+      // The field has no value at all, no go
+      return FALSE;
+    }
+    elseif ($field_type) {
+      // We want aditional field type validation
+      switch ($data_type) {
+        case 'int':
+          // @todo Better integer validation, is_int not working for strings
+          return is_numeric($value);
+        case 'float':
+          return is_numeric($value);
+        case 'string':
+        default:
+          return is_string($value);
+      }
+    }
+    else {
+      return TRUE;
+    }
+  }
+ 
+  /**
+   * Build a form element to edit this field
+   * 
+   * Was: notifications_field_form_element($type, $value, $subscription = NULL, $title = FALSE, $required = FALSE, $size = 40)
+   */
+  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
+    $element = array(
+      '#type' => 'textfield',
+      '#default_value' => isset($this->value) ? $this->value : NULL,
+      '#required' => $required,
+      '#size' => 40,
+    );
+    if ($title) {
+      $element['#title'] = $this->get_title();
+    }
+    return $element;
+  }
+  /**
+   * PHP Magic. Regurn object properties to be serialized
+   */
+  public function __sleep() {
+    return array('type', 'value', 'index', 'name');
+  }
 }
 
 /**
@@ -164,7 +221,7 @@ class Notifications_Field_Autocomplete extends Notifications_Field {
    * Format value for autocomplete
    */
   function autocomplete_value() {
-    return $this->getTitle();
+    return $this->get_title();
   }
   /**
    * Parse value from autocomplete
@@ -174,14 +231,44 @@ class Notifications_Field_Autocomplete extends Notifications_Field {
    * Get autocomplete path
    */
   public abstract function autocomplete_path();
+
+  /**
+   * Build a form element to edit this field
+   */
+  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
+    $element = parent::form_edit_element($title, $required, $size);
+    $element['#default_value'] = $this->autocomplete_value();
+    $element['#autocomplete_path'] = $this->autocomplete_path();
+    return $element;
+  }
+    
 }
 
 /**
  * Field with selectable values
  */
 class Notifications_Field_Select extends Notifications_Field {
-  
+  public abstract function select_options();
+  /**
+   * Build a form element to edit this field
+   */
+  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
+    $options = $this->select_options();
+    // If not required or not current value, add an empty value at the beginning
+    if (!$required || !isset($this->value)) {
+      $options = array('' => '') + $options;
+    }
+    $element = array(
+      '#type' => 'select',
+      '#size' => $size,
+      '#options' => $options,
+      '#default_value' => isset($this->value) ? $this->value : '',
+      '#required' => FALSE
+    );
+    return $element;
+  }
 }
+
 /**
  * Node fields
  */
@@ -191,18 +278,19 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   /**
    * Get field name
    */
-  function getTitle() {
+  function get_title() {
     return t('Node');
   }
   /**
    * Get object name as plain string
    */
-  function getName() {
+  function get_name() {
     if ($node = $this->get_object()->value()) {
-    return $html ? l($node->title, "node/$nid") : check_plain($node->title);
-  }
-  else {
-    return t('Not found');
+      return $html ? l($node->title, "node/$nid") : check_plain($node->title);
+    }
+    else {
+      return t('Not found');
+    }
   }
   
   /**
@@ -267,7 +355,7 @@ class Notifications_User_Field extends Notifications_Field_Autocomplete {
    * Parse value from autocomplete
    */
   function autocomplete_parse($string, $field = NULL) {
-    return notifications_user_name2uid($string, $field)
+    return notifications_user_name2uid($string, $field);
   }
 
   function autocomplete_value() {
@@ -275,7 +363,7 @@ class Notifications_User_Field extends Notifications_Field_Autocomplete {
   }
 
   function format_name($format) {
-    return messaging_user_format_name();
+    return messaging_user_format_name($this->value);
   }
 }
 
@@ -500,79 +588,4 @@ function notifications_field_subscription_options($type, $subscription = NULL) {
   }
 }
 
-/**
- * Check if the field has a valid value
- */
-function notifications_field_valid_value($value, $type = NULL) {
-  // A numeric value of zero is possible too, that's why the is_numeric()
-  if (!is_numeric($value) && empty($value)) {
-    // The field has no value at all, no go
-    return FALSE;
-  }
-  elseif ($type) {
-    // We want aditional field type validation
-    switch (notifications_field_type($type, 'type')) {
-      case 'int':
-        // @todo Better integer validation, is_int not working for strings
-        return is_numeric($value);
-      case 'float':
-        return is_numeric($value);
-      case 'string':
-      default:
-        return is_string($value);
-    }
-  }
-  else {
-    return TRUE;
-  }
-}
-
-/**
- * Build a form element to edit a field
- * 
- * @param $type
- *   Field type
- * @param $value
- *   Field value
- * @param $subscription
- *   Subscription template or instance we are adding this field to
- */
-function notifications_field_form_element($type, $value, $subscription = NULL, $title = FALSE, $required = FALSE, $size = 40) {
-  $subscription_type = $subscription ? $subscription->type : NULL;
-  $field_info = notifications_field_type($type);
-  $object_info = isset($field_info['object_type']) ? notifications_object_type($field_info['object_type']) : array();
-  $merged_info = $field_info + $object_info;
-
-  if (isset($merged_info['options callback'])) {
-    $element['#type'] = 'select';
-    $element['#options'] = notifications_field_subscription_options($type, $subscription);
-  }
-  elseif (!empty($merged_info['autocomplete path'])) {
-    $element['#type'] = 'textfield';
-    $element['#size'] = $size;
-    $element['#autocomplete_path'] = $merged_info['autocomplete path'];
-    if ($value) {     
-      if (!empty($merged_info['autocomplete callback'])) {
-        $value = _notifications_field_callback($type, 'autocomplete callback', $value, $subscription);
-      }
-      elseif (!empty($merged_info['format callback']))  {
-        $value = _notifications_field_callback($type, 'format callback', $value, FALSE);
-      }      
-    }
-  }
-  else {
-    $element['#type'] = 'textfield';
-    if ($value) {
-      $value = check_plain($value);
-    }
-  }
-  if ($value) {
-    $element['#default_value'] = $value;
-  }
-  if ($title) {
-    $element['#title'] = notifications_field_format_name($type);
-  }
-  $element['#required'] = $required;
-  return $element;
-}
 

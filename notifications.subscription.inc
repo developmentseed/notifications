@@ -19,9 +19,11 @@ class Notifications_Subscription extends Notifications_Object {
   const FORMAT_TABLE = 5;
   // Format as item list (8 + 2(inline) + 1 (html))
   const FORMAT_LIST = 10;
+  
+  // Subscription type
+  protected $type;
   // Subscription fields
   protected $fields;
-
   /**
    * Class constructor
    */
@@ -33,9 +35,39 @@ class Notifications_Subscription extends Notifications_Object {
       }
     }
   }
+  /**
+   * Get all fields for this subscription/type
+   */
   public function get_fields() {
     return array();
   }
+  
+  /**
+   * Check whether this is a subscription type
+   */
+  public function is_type() {
+    return FALSE;
+  }
+  /**
+   * Check whether this is a subscription instance
+   */
+  public function is_instance() {
+    return FALSE;
+  }
+  /**
+   * Get subscription type object
+   * 
+   * @return Notifications_Subscription_Type
+   */
+  public abstract function subscription_type();
+
+  /**
+   * Get subscription type information
+   */
+  public function type_info($property = NULL, $default = NULL) {
+    return notifications_subscription_type($this->type, $property, $default);
+  }
+ 
   /**
    * Build from form submission
    */
@@ -116,6 +148,53 @@ class Notifications_Subscription extends Notifications_Object {
     }
   }
   
+
+  /**
+   * Get objects to which we can subscribe on current page.
+   * 
+   * Was: notifications_object_page_objects()
+   */
+  static function page_objects() {
+    $objects = &drupal_static(__FUNCTION__);
+    if (!isset($objects)) {
+      $objects = module_invoke_all('notifications_subscription', 'page objects');
+    }
+    return $objects;
+  }
+
+  /**
+   * Build subscriptions for current user to an array of objects.
+   * 
+   * Was notifications_object_page_subscriptions($objects)
+   * 
+   * @return Notifications_Subscription_List
+   */
+  static function page_subscriptions($objects, $account = NULL) {
+    $account = $account ? $account : $GLOBALS['user'];
+    $subscriptions = new Notifications_Subscription_List();
+    foreach ($objects as $object) {
+      if ($more = $object->user_subscriptions($account)) {
+        $subscriptions->add($more);
+      }
+    }
+    return $subscriptions;
+  }
+
+  /**
+   * Build a form element for a field
+   * 
+   * A subscription type can override its form elements
+   */
+  function field_form_element($field, $title = FALSE, $required = FALSE, $size = 40) {
+    return $field->form_element($title, $required, $size);
+  }
+
+  /**
+   * Run module_invoke_all('notifications_subscription') with this object
+   */
+  protected function invoke_all($op, $param = NULL) {
+    return module_invoke_all('notifications_subscription', $op, $this, $param);    
+  }
 }
 
 /**
@@ -128,9 +207,27 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   public $instance = 'Notifications_Subscription_Instance';
   // Event that triggers this subscription
   public $event_type;
-  // Condition fields
-  public $conditions;
-
+  // Array of field types
+  public $field_types = array();
+  // Array of field values
+  public $field_values = array();
+  // Array of built field objects
+  public $fields = array();
+  
+  /**
+   * This is a subscription type
+   */
+  public function is_type() {
+    return TRUE;
+  }
+  /**
+   * Get subscription type object
+   * 
+   * @return Notifications_Subscription_Type
+   */
+  public function subscription_type() {
+    return $this;
+  }
   /**
    * Build subscription type
    */
@@ -144,7 +241,7 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   /**
    * Build instance of this type
    */
-  public function build_instance($object) {
+  public function build_instance($object = NULL) {
     $class = $this->instance;
     $subscription = new $class($object);
     $subscription->type = $this->type;
@@ -164,17 +261,21 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   }
   /**
    * Get fields as array of field objects
+   * 
+   * These are instance fields so we don't store them.
    */
   function get_fields() {
-    if (!isset($this->fields)) {
-      $this->set_fields();
+    $fields = array();
+    foreach ($this->field_types as $index => $type) {
+      $value = issset($this->field_values[$index]) ? $this->field_values[$index] : NULL;
+      $fields[$index] = Notifications_Field::build($type, $value, $index);
     }
-    return $this->fields;
+    return $fields;
   }
   /**
    * Set fields
    */
-  function set_fields($fields = NULL) {
+  function set_fields($fields) {
     if ($fields) {
       foreach ($fields as $field) {
         $field->subscription = $this;
@@ -231,6 +332,31 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
     }
     return $fields;
   }
+  /**
+   * Get a subform to edit field elements. 
+   * 
+   * Defaults to the subscription type method with this instance fields.
+   */
+  function fields_edit_fieldset($fields = NULL) {
+    $fields = isset($fields) ? $fields : $this->get_fields();
+    $elements['fields'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Subscription fields'),
+    ) + $this->fields_edit_elements($fields);
+    return $elements;
+  }
+  
+  /**
+   * Get elements to edit fields
+   */
+  function fields_edit_elements($fields = NULL) {
+    $fields = isset($fields) ? $fields : $this->get_fields();
+    $elements = array();
+    foreach ($fields as $index => $field) {
+      $elements[$index] = $field->form_edit_element();
+    }   
+  }
+
 }
 
 /**
@@ -294,6 +420,20 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       $this->status = self::STATUS_ACTIVE;
       $this->created = time();
     }
+  }
+  /**
+   * Check whether this is a subscription instance
+   */
+  public function is_instance() {
+    return TRUE;
+  }
+  /**
+   * Get subscription type object
+   * 
+   * @return Notifications_Subscription_Type
+   */
+  public function subscription_type() {
+    return notifications_subscription($this->type);
   }
   /**
    * Build from type, template
@@ -1047,13 +1187,52 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
 
   /**
-   * Display a form field for a notifications_field
+   * Get a subform to edit field elements. 
+   * 
+   * Defaults to the subscription type method with this instance fields.
    */
-  public function field_element($type, $value = NULL, $title = FALSE, $required = FALSE ) {
-    notifications_include('object.inc');
-    return notifications_field_form_element($type, $value, $this, $title, $required);
+  function fields_edit_fieldset($fields = NULL) {
+    $fields = isset($fields) ? $fields : $this->get_fields();
+    return $this->subscription_type()->fields_edit_fieldset($fields);
+  }
+  
+  /**
+   * Get elements to edit fields
+   */
+  function fields_edit_elements($fields = NULL) {
+    $fields = isset($fields) ? $fields : $this->get_fields();
+    return $this->subcription_type()->fields_edit_elements($fields);   
   }
 
+  /**
+   * Get element to edit field
+   */
+  function field_edit_element($field) {
+    return $this->subscription_type()->field_edit_element($field);
+  }
+  /**
+   * Display a form field for a notifications_field
+   *   
+   * Defaults to the subscription type display
+   * 
+   * @param $type
+   *   Field type
+   * @param $value
+   *   Field value
+   * @param $subscription
+   *   Subscription template or instance we are adding this field to
+   */
+  function field_form_element($field, $title = FALSE, $required = FALSE, $size = 40) {
+    return $this->subscription_type()->field_form_element($field, $title, $required);
+  }
+  /**
+   * Display a form field for a notifications_field
+   * 
+   * 
+   */
+  public function field_element($field, $title = FALSE, $required = FALSE ) {
+    return $this->subscription_type()->field_element($field, $title, $required);
+  }
   /**
    * Status list
    */
@@ -1107,7 +1286,10 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
 class Notifications_Subscription_List {
   public $subscriptions = array();
   protected $instances = array();
+  // Array indexed by subscription type
   protected $types = array();
+  // Parameters common to all instances
+  protected $instance_params = array();
   /**
    * Construct with list of subscriptions
    */
@@ -1125,8 +1307,13 @@ class Notifications_Subscription_List {
         $this->add($item);
       } 
     }
-    else {
-      $this->add_subscription($subscription);
+    elseif (is_object($items)) {
+      if (is_a($items, 'Notifications_Subscription_List')) {
+        $this->add($items->get_subscriptions());
+      }
+      elseif (is_a($items, 'Notifications_Subscription')) {
+        $this->add_subscription($items);
+      }
     }
   }
   /**
@@ -1139,7 +1326,35 @@ class Notifications_Subscription_List {
       $this->instances[$subscription->sid] = $subscription;
     }
   }
+  /**
+   * Get array of subscription / subscription types
+   */
+  function get_subscriptions() {
+    return $this->subscriptions;
+  }
+  /**
+   * Get all of the subscriptions that are actual instances
+   */
+  function get_instances() {
+    $list = array();
+    foreach ($this->subscriptions as $subscription) {
+      if ($subscription->is_instance()) {
+        $list[] = $subscription;
+      }
+    }
+    return $list;
+  }
   
+  /**
+   * Set a property to all of the subscription instances
+   */
+  function set_all($name, $value) {
+    $this->instance_params[$name] = $value;
+    foreach ($this->get_instances() as $subscription) {
+      $subscription->$name = $value;
+    }
+  }
+
   /**
    * Subform with subscription options so it can be reused for a fieldset on a bigger form
    * 
