@@ -63,7 +63,7 @@ function notifications_schema() {
     ),
     'primary key' => array('sid'),
   );
-  $schema['notifications_fields'] = array(
+  $schema['notifications_subscription_fields'] = array(
     'description' => 'Conditions for subscriptions, there may be none or many for each subscription.',
     'fields' => array(
       'sid' => array(
@@ -87,8 +87,9 @@ function notifications_schema() {
         'type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
       ),
     ),
-    'primary key' => array('sid', 'field'),
+    'primary key' => array('sid', 'type', 'position'),
   );
+
   $schema['notifications_event'] = array(
     'description' => 'Storage table for event parameters.',
     'fields' => array(

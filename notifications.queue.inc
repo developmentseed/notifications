@@ -365,7 +365,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
         ->fields('s', array('queue', 'uid', 'mdid', 'send_method','sid', 'send_interval', 'language', 'conditions'));
       $select->addExpression(REQUEST_TIME);
       $select->addExpression($event->eid);
-      $select->innerJoin('notifications_fields', 'f', 's.sid = f.sid');
+      $select->innerJoin('notifications_subscription_fields', 'f', 's.sid = f.sid');
       $select->groupBy('uid')
         ->groupBy('sid')
         ->groupBy('send_interval')
@@ -626,10 +626,10 @@ class Notifications_Queue_Process {
   public static function option($name, $value = NULL) {
     // Get / set value for option
     if (isset($value)) {
-      self::$process_options[$name] = $value;
+      self::$options[$name] = $value;
     }
     else {
-      return isset(self::$process_options[$name]) ? self::$process_options[$name] : FALSE;
+      return isset(self::$options[$name]) ? self::$options[$name] : FALSE;
     }    
   }
   /**

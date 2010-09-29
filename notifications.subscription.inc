@@ -452,7 +452,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   // Event that triggers this subscription
   public $event_type;
   // Number of conditions that must be met
-  public $conditions;
+  public $conditions = 0;
   // Values to pass on to the queue for composition
   public $send_interval;
   public $send_method;
@@ -617,12 +617,12 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Load condition fields from db
    */
   function load_fields() {
-    $this->fields = array();
+    // Make sure fields are set
+    $this->set_fields();
     if (!empty($this->sid)) {
-      $result = db_query("SELECT * FROM {notifications_fields} WHERE sid = %d", $this->sid);
-      while ($field = db_fetch_object($result)) {
-        $this->set_field($field);
-      }      
+      foreach (Notifications_Field::load_multiple(array('sid' => $this->sid))) as $field) {
+        $this->add_field($field);
+      }       
     }
   }
   /**
@@ -646,7 +646,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   function delete() {
     if ($this->is_instance()) {
       module_invoke_all('notifications_subscription', 'delete', $this);
-      db_query("DELETE FROM {notifications_fields} WHERE sid = %d", $this->sid);
+      db_query("DELETE FROM {notifications_subscription_fields} WHERE sid = %d", $this->sid);
       return parent::delete();
     }
   }
@@ -734,28 +734,34 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
 
   /**
+   * Save to db
+   */
+  function save() {
+    $update = $this->is_stored();
+    $result = drupal_write_record('notifications_subscription', $this, $update ? 'sid' : array());
+    return $result && $this->save_fields($update);
+  }
+
+  /**
    * Save condition fields to db
    * 
    * @param $update
    *   Whether this is an old subscription being created
    */
   function save_fields($update = FALSE) {
+    $result = TRUE;
     if (isset($this->fields)) {
       if ($update) {
-        db_query("DELETE FROM {notifications_fields} WHERE sid = %d", $this->sid);
+        db_query('DELETE FROM {notifications_subscription_fields} WHERE sid = :sid', array(':sid' => $this->sid));
       }
-      foreach ($this->fields as $field) {
-        db_query("INSERT INTO {notifications_fields} (sid, field, value, intval) VALUES(%d, '%s', '%s', %d)", $this->sid, $field->field, $field->value, (int)$field->value);
+      foreach ($this->get_fields() as $field) {
+        $field->set_subscription($this);
+        $result = $result && $field->save();
       }
     }
+    return $result;
   }
-  /**
-   * Add a new condition, update counter
-   */
-  function add_condition($name, $value) {
-    $this->add_field($name, $value);
-    $this->conditions++;
-  }
+
   /**
    * Get fields as array of field => value pairs
    * 
@@ -805,12 +811,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   function serialize_type() {
     return implode('/', array($this->type, $this->serialize_fields()));
   }
-  /**
-   * Add a new field with name, value
-   */
-  function add_field($type, $value = NULL) {
-    $this->set_field($this->build_field($type, $value));
-  }
+
   /**
    * Add field arguments from url
    * 
@@ -829,15 +830,11 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   
   /**
    * Set a field. 
-   * - If the field has already a key (index) it will replace an existing one with the same key
-   * - If not key, it will be added to the field list with an ordinary key generated
-   * 
-   * @param $field
-   *   Field object with one or more of these properties: key, type, field, value
    */
-  function set_field($field) {
-    $field->subscription = $this;
+  function add_field($field) {
+    $field->set_subscription($this);
     $this->fields[$field->position] = $field;
+    $this->conditions = count($this->fields);
   }
   /**
    * Get fields as array of field objects
@@ -904,44 +901,20 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
   }
   /**
-   * Set field values, all at a time
-   * 
-   * Each field item may have different formats:
-   * - Numeric key => field type. Like array(nid, tid)
-   * - Numeric key => array('type' => type, 'value' => value)
-   * - Numeric key => Object ($field object with field, value properties)
-   * @param $fields
-   *   Fields is an array of field items, each of them with many possible formats:
-   *   NULL to set the fields from the subscription type or template if not set
+   * Set field values, all at a time from the ones coming from the subscription type.
    */
-  function set_fields($fields = NULL, $normalize = TRUE) {
+  function set_fields($fields = NULL) {
     if (isset($fields)) {
       $this->fields = array();
-      $this->add_fields($fields, $normalize);
+      foreach ($fields as $field) {
+        $this->add_field($field);
+      }
     }
     elseif (!isset($this->fields)) {
-      // Set the fields from the subscription type or template
-      $this->fields = array();
-      $this->add_fields($this->get_type_fields(), FALSE);
+      $this->set_fields($this->subscription_type()->get_fields());
     }
   }
-  /**
-   * Add field values to existing ones
-   */
-  function add_fields($fields, $normalize = TRUE) {
-    if ($normalize) {
-      $fields = $this->normalize_fields($fields);
-    }
-    foreach ($fields as $key => $value) {
-      $this->set_field($value);
-    }    
-  }
-  /**
-   * Get fields from subscription type as normalized array of objects
-   */
-  function get_type_fields() {
-    return $this->subscription_type()->get_type_fields();
-  }
+
   /**
    * Convert fields to a standard format: arrray of object fields
    */
@@ -1050,18 +1023,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
     return $this->editable;
   }
-  /**
-   * Get editable fields. They're the ones in the subscription type that have no value
-   */
-  function get_editable_fields() {
-    return $this->filter_fields($this->get_type_fields(), FALSE);
-  }
-  /**
-   * Get instance fields that have a value set
-   */
-  function get_instance_fields() {
-    return $this->filter_fields($this->get_fields());
-  }
 
   /**
    * Get instance of this one for certain conditions
@@ -1083,7 +1044,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
 
   /**
-   * Load subscription objects
+   * Load subscription objects, from fields
    */
   function load_objects() {
     if (!isset($this->objects)) {

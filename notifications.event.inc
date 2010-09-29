@@ -402,7 +402,7 @@ class Notifications_Event extends Notifications_Entity {
       $condition = $this->get_field_conditions($types);
       if ($condition && $condition->count()) {
         $query
-          ->leftJoin('notifications_fields', 'f', 's.sid = f.sid')
+          ->leftJoin('notifications_subscription_fields', 'f', 's.sid = f.sid')
           ->condition($condition);
       }
       else {

@@ -33,7 +33,7 @@ abstract class Notifications_Field {
    */
   public function __construct($template = array()) {
     foreach ((array)$template as $field => $value) {
-      $this->$field = $value
+      $this->$field = $value;
     }
   }
   /**
@@ -138,12 +138,43 @@ abstract class Notifications_Field {
   }
 
   /**
+   * Set subscription 
+   */
+  function set_subscription($subscription) {
+    $this->subscription = $subscription;
+    $this->sid = !empty($subscription->sid) ? $subscription->sid : NULL;
+  }
+  /**
    * Check if the field has a valid value
    */
   function valid_value() {
     return $this->validate_value($this->value, $this->data_type);
   }
 
+  /**
+   * Save to db
+   */
+  function save() {
+    // We may have a new sid for this subscription object
+    if (!empty($this->subscription)) {
+      $this->sid = $this->subscription->sid;
+    }
+    return drupal_write_record('notifications_subscription_fields', $this);
+  }
+  /**
+   * Load multiple fields
+   */
+  public static function load_multiple($conditions) {
+    $fields = array();
+    $query = db_select('notifications_subscription_fields', 'f')->fields('f');
+    foreach ($conditions as $key => $value) {
+      $query->condition($key, $value);
+    }
+    foreach ($query->execute()->fetchAll() as $field) {
+      $fields[] = self::build_object($field);
+    }
+    return $fields;
+  }
   /**
    * Check if the value is valid for this field has a valid value
    * 

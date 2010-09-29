@@ -12,4 +12,4 @@ files[] = 'notifications.template.inc'
 files[] = 'notifications.subscription.inc'
 files[] = 'notifications.event.inc'
 files[] = 'notifications.queue.inc'
-
+configure = admin/config/messaging/notifications

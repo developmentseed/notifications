@@ -766,7 +766,7 @@ function notifications_content_node_type($op, $info) {
     case 'update':
       // When changing node type machine name, update all subscriptions
       if (!empty($info->old_type) && $info->old_type != $info->type) {
-        db_query("UPDATE {notifications_fields} SET value = '%s' WHERE field = 'type' AND value = '%s'", $info->type, $info->old_type);
+        db_query("UPDATE {notifications_subscription_fields} SET value = '%s' WHERE field = 'type' AND value = '%s'", $info->type, $info->old_type);
       }
       break;
   }

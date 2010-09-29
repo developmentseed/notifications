@@ -183,47 +183,6 @@ function notifications_manage_subscriptions_form_submit($form, &$form_state) {
 }
 
 /**
- * Manage destination form. Edit subscriptions for a destination
- */
-function notifications_manage_destination_form($form_state, $destination) {
-  module_load_include('inc', 'notifications', 'notifications.pages');
-  notifications_include('destination.inc');
-  if (isset($form_state['values']['operation']) && $form_state['values']['operation'] == 'delete') {
-    $form = notifications_multiple_delete_confirm($form_state, array_filter($form_state['values']['subscriptions']));
-    return $form;
-  }
-  //$form = notifications_destination_view_subform($destination);
-  $form['description'] = notifications_destination_subform($destination);
-  $form['admin'] = notifications_destination_manage_subform($destination);
-  $form['admin'] += notifications_manage_subscriptions_form_options($destination);
-  $form['extra'] = notifications_manage_destination_extra($destination); 
-  return $form;
-}
-
-/**
- * Manage destination extra options for administrators
- */
-function notifications_manage_destination_extra($destination) {
-  if (user_access('administer notifications') && function_exists('notifications_anonymous_manage_links')) {
-    foreach (_notifications_anonymous_manage_links('destination', $destination) as $link) {
-      $url = url($link['href'], $link['options']);
-      $rows[] = array(
-        $link['title'],
-        l($url, $url),
-      );
-    }
-    $form['links'] = array(
-      '#type' => 'item',
-      '#title' => t('Anonymous links for this destination'),
-      '#value' => theme('table', array(), $rows),
-    );
-    return $form;
-  }
-  else {
-    return array();
-  }
-}
-/**
  * Build query for node administration filters based on session.
  */
 function notifications_subscriptions_build_filter_query($account = NULL) {

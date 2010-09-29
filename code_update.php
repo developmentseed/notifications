@@ -482,7 +482,7 @@ function notifications_subscription_delete($sid) {
     $where = "sid = %d";
     $cache[$sid] = NULL;
   }
-  foreach (array('notifications', 'notifications_fields') as $table) {
+  foreach (array('notifications_subscription', 'notifications_subscription_fields') as $table) {
     db_query("DELETE FROM {". $table ."} WHERE " . $where, $sid);
   }
   // Delete queued notifications for this subscription
@@ -1214,3 +1214,93 @@ function notifications_include($file, $module = 'notifications') {
   return messaging_include($file, $module);
 }
 
+
+/**
+ * Implementation of hook_token_values()
+ * 
+ * @ TODO: Work out event tokens
+ */
+function notifications_token_values($type, $object = NULL, $options = array()) {
+  $language = isset($options['language']) ? $options['language'] : $GLOBALS['language'];
+  switch ($type) {
+    case 'subscription':
+      $values = array();
+      // Tokens only for registered users
+      if ($subscription = messaging_check_object($object, 'Notifications_Subscription')) {
+        $values['subscription-unsubscribe-url'] = notifications_build_url('unsubscribe', 'subscription', $subscription, array('language' => $language));
+        $values['subscription-edit-url'] = notifications_build_url('edit', 'subscription', $subscription, array('language' => $language));
+        $values['subscription-type'] = $subscription->get_type('name');
+        $values['subscription-name'] = $subscription->get_name();
+        $values['subscription-description-short'] = $subscription->format_short(FALSE);
+        $values['subscription-description-long'] = $subscription->format_long(FALSE);
+        // Old token, populate it for old templates
+        $values['unsubscribe-url'] = $values['subscription-unsubscribe-url'];
+      }
+      return $values;
+      
+    case 'user':
+      // Only for registered users.
+      if (($account = $object) && !empty($account->uid)) {
+        // We have a real user, so we produce full links
+        $values['subscriptions-manage'] = url("user/$account->uid/notifications", array('absolute' => TRUE, 'language' => $language));
+        $values['unsubscribe-url-global'] = notifications_build_url('unsubscribe', 'user', $account, array('language' => $language));
+        return $values;
+      }
+      break;
+
+    case 'destination':
+      // These are just for registered users. For anonymous, notifications_anonymous will do it
+      if (($destination = messaging_check_object($object, 'Messaging_Destination')) && !empty($destination->uid)) {
+        $values['destination-unsubscribe-url'] = notifications_build_url('unsubscribe', 'destination', $destination, array('language' => $language));
+        $values['destination-manage-url'] = notifications_build_url('manage', 'destination', $destination, array('language' => $language));
+        $values['destination-edit-url'] = notifications_build_url('edit', 'destination', $destination, array('language' => $language));
+        return $values;
+      }
+      break;
+
+    case 'event':
+      if ($event = messaging_check_object($object, 'Notifications_Event')) {
+        $timezone = isset($options['timezone']) ? $options['timezone'] : variable_get('date_default_timezone', 0);
+        $values['event-type-description'] = $event->get_type('description');
+        $values['event-date-small'] = format_date($event->created, 'small', '', $timezone, $language->language);
+        $values['event-date-medium'] = format_date($event->created, 'medium', '', $timezone, $language->language);
+        $values['event-date-large'] = format_date($event->created, 'large', '', $timezone, $language->language);
+        return $values;
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_token_list(). Documents the individual
+ * tokens handled by the module.
+ */
+function notifications_token_list($type = 'all') {
+  $tokens = array();
+  if ($type == 'user' || $type == 'all') {
+    $tokens['user']['subscriptions-manage']    = t('The url for the current user to manage subscriptions.');
+    $tokens['user']['unsubscribe-url-global'] = t('The url to allow a user to delete all their subscriptions.');
+  }
+  if ($type == 'subscription' || $type == 'all') {
+    $tokens['subscription']['subscription-unsubscribe-url']  = t('The url for disabling a specific subscription.');
+    $tokens['subscription']['subscription-edit-url']  = t('The url for editing a specific subscription.');
+    $tokens['subscription']['subscription-type'] = t('The subscription type.');
+    $tokens['subscription']['subscription-name'] = t('The subscription name.');
+    $tokens['subscription']['subscription-description-short'] = t('The subscription short description.');
+    $tokens['subscription']['subscription-description-long'] = t('The subscription long description.');
+  }
+  if ($type == 'event' || $type == 'all') {
+    $tokens['event']['event-type-description'] = t('Description of event type.');
+    $tokens['event']['event-date-small'] = t('Date of the event, short format.');
+    $tokens['event']['event-date-medium'] = t('Date of the event, medium format.');
+    $tokens['event']['event-date-large'] = t('Date of the event, large format.');
+  }
+  if ($type == 'destination' || $type == 'all') {
+    // Nore destination tokens provided by messaging module
+    $tokens['destination']['destination-unsubscribe-url'] = t('URL to unsubscribe to the destination.');
+    $tokens['destination']['destination-manage-url'] = t('URL to manage all subscriptions for the destination.');
+    $tokens['destination']['destination-edit-url'] = t('URL to edit the destination.');
+
+  }
+  return $tokens;
+}

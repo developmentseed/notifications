@@ -271,10 +271,10 @@ function notifications_custom_fields_form_submit($form, $form_state) {
 function notifications_custom_fields_update_all($subscription) {
   if ($count = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE type = '%s'", $subscription->type))) {
     // Delete all fields for this subscription type
-    db_query("DELETE FROM {notifications_fields} WHERE sid IN (SELECT sid FROM {notifications_subscription} WHERE type = '%s')", $subscription->type);
+    db_query("DELETE FROM {notifications_subscription_fields} WHERE sid IN (SELECT sid FROM {notifications_subscription} WHERE type = '%s')", $subscription->type);
     // Create the new fields
     foreach ($subscription->get_fields() as $field) {
-      db_query("INSERT INTO {notifications_fields} (sid, field, value, intval) SELECT sid, '%s', '%s', %d FROM {notifications_subscription} WHERE type = '%s'", $field->field, $field->value, (int)$field->value, $subscription->type);
+      db_query("INSERT INTO {notifications_subscription_fields} (sid, field, value, intval) SELECT sid, '%s', '%s', %d FROM {notifications_subscription} WHERE type = '%s'", $field->field, $field->value, (int)$field->value, $subscription->type);
     }
     drupal_set_message(t('@count subscriptions have been updated with the new values.', array('@count' => $count)));
   }
