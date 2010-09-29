@@ -5,5 +5,11 @@ package = "Notifications"
 version = VERSION
 core = 7.x
 dependencies[] = messaging
-dependencies[] = messaging_template
+files[] = 'notifications.object.inc'
+files[] = 'notifications.field.inc'
+files[] = 'notifications.message.inc'
+files[] = 'notifications.template.inc'
+files[] = 'notifications.subscription.inc'
+files[] = 'notifications.event.inc'
+files[] = 'notifications.queue.inc'
 

@@ -234,6 +234,7 @@ function notifications_content_notifications($op) {
         'event_type' => 'node',
         'object_type' => 'node',
         'title' => t('Thread'),
+        'class ' => 'Notifications_Node_Subscription',
         'access' => 'subscribe to content',
         'page callback' => 'notifications_content_page_thread',
         'user page' => 'user/%user/notifications/thread',
@@ -252,6 +253,7 @@ function notifications_content_notifications($op) {
         'description' => t('Subscribe to all content of a given type.'),
         'name callback' => 'notifications_content_subscription_name',
       );
+      /*
       $types['author'] = array(
         'event_type' => 'node',
         'object_type' => 'user',
@@ -275,31 +277,26 @@ function notifications_content_notifications($op) {
         'description' => t('Subscribe to all content of a given type submitted by a user.'),
         'name callback' => 'notifications_content_subscription_name',
       );
+      */
       return $types;
 
-    case 'subscription fields':
+    case 'field types':
       // Information about available fields for subscriptions
       // - format callback => will be used to convert the value into a displayable output
       // - value callback => will be used to convert autocomplete name into field value
       // - autocomplete path => path for autocomplete field
       // - options callback / arguments => used to produce a drop down field
-      $fields['nid'] = array(
-        'name' => t('Node'),
-        'field' => 'nid',
-        'type' => 'int',
-        'object_type' => 'node',
+      $fields['node:nid'] = array(
+        'title' => t('Node'),
+        'class' => 'Notifications_Node_Field',
       );
-      $fields['author'] = array(
-        'name' => t('Author'),
-        'field' => 'author',
-        'type' => 'int',
-        'object_type' => 'user',
+      $fields['node:uid'] = array(
+        'title' => t('Author'),
+        'class' => 'Notifications_User_Field',
       );
-      $fields['type'] = array(
-        'name' => t('Node type'),
-        'field' => 'type',
-        'type' => 'string',
-        'options callback' => 'notifications_content_types_callback',
+      $fields['node:type'] = array(
+        'title' => t('Node type'),
+        'class' => 'Notifications_Node_Type_Field'
       );
       return $fields;
 
@@ -307,12 +304,9 @@ function notifications_content_notifications($op) {
       // Define object types for use by events and subscriptions
       // Node and user are defined in the main notifications module
       $types['comment'] = array(
-        'name' => t('Comment'),
-        'key_field' => 'cid',
-        'load callback' => 'notifications_content_comment_load',
-        'format callback' => 'notifications_content_comment_cid2title',
-        'access callback' => 'notifications_content_comment_access',
-      );      
+        'title' => t('Comment'),
+        'class' => 'Notifications_Comment',
+      );
       return $types;
 
     case 'event types':

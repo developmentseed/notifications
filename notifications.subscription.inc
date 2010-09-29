@@ -8,7 +8,7 @@
 /**
  * Common base for subscription type and subscription instance
  */
-class Notifications_Subscription extends Notifications_Object {
+abstract class Notifications_Subscription extends Notifications_Entity {
     // Format as plaintext. Note it evaluates to false.
   const FORMAT_PLAIN = 0;
   // Format as html. Note it evaluates to true
@@ -36,12 +36,22 @@ class Notifications_Subscription extends Notifications_Object {
     }
   }
   /**
+   * Build from db object or template
+   */
+  public static function build_object($object) {
+    $class = self::type_info($object->type, 'class', 'Notifications_Subscription_Instance');
+    return new $class($object);
+  }
+  /**
    * Get all fields for this subscription/type
    */
-  public function get_fields() {
-    return array();
-  }
-  
+  public abstract function get_fields();
+  /**
+   * Get subscription type object
+   * 
+   * @return Notifications_Subscription_Type
+   */
+  public abstract function subscription_type();  
   /**
    * Check whether this is a subscription type
    */
@@ -54,20 +64,14 @@ class Notifications_Subscription extends Notifications_Object {
   public function is_instance() {
     return FALSE;
   }
-  /**
-   * Get subscription type object
-   * 
-   * @return Notifications_Subscription_Type
-   */
-  public abstract function subscription_type();
 
   /**
    * Get subscription type information
    */
-  public function type_info($property = NULL, $default = NULL) {
-    return notifications_subscription_type($this->type, $property, $default);
+  public static function type_info($type = NULL, $property = NULL, $default = NULL) {
+    return notifications_subscription_type($type, $property, $default);
   }
- 
+
   /**
    * Build from form submission
    */
@@ -229,6 +233,25 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
     return $this;
   }
   /**
+   * Get object title
+   */
+  public function get_title() {
+    return t('Subscription type');
+  }
+  /**
+   * Get object name
+   */
+  public function get_name() {
+    return t('Subscription');
+  }
+
+  /**
+   * User access function
+   */
+  public function user_access($account, $op = 'view') {
+    return TRUE;
+  }
+  /**
    * Build subscription type
    */
   public static function build_type($type) {
@@ -302,7 +325,7 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
     // Finally, add subscription type
     return db_and()
       ->condition('type', $this->type)
-      ->condition($add)
+      ->condition($add);
   }
 
   /**
@@ -426,6 +449,12 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   public function is_instance() {
     return TRUE;
+  }
+  /**
+   * User access function
+   */
+  public function user_access($account, $op = 'view') {
+    return $this->subscription_type()->user_access($account, $op);
   }
   /**
    * Get subscription type object
@@ -1244,40 +1273,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       self::STATUS_DISABLED => t('disabled'),
    );
   }
-
-  /**
-   * Magic method, set protected properties
-   * 
-   * Warning: This also runs for unset properties
-   */
-  public function __set($name, $value) {
-    switch ($name) {
-      case 'fields':
-        $this->set_fields($this->normalize_fields($value));
-        break;
-      case 'destination':
-        if (is_object($value)) {
-          $this->set_destination($value);
-        }
-        else {
-          $this->destination = $value;
-        }
-        break;
-      default:
-        parent::__set($name, $value);
-    }
-  }
-  /**
-   * Magic method, get protected properties
-   */
-  public function __get($name) {
-    switch ($name) {
-      case 'fields':
-        return $this->get_conditions();
-        break;
-    }
-  }
-
 }
 
 /**

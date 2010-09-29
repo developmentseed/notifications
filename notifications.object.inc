@@ -6,9 +6,10 @@
  */
 
 /**
- * Base class for all Notifications objects
+ * Base class for all Notifications entities
  */
-abstract class Notifications_Object {
+abstract class Notifications_Entity {
+  protected $type;
   /**
    * Constructor
    */
@@ -23,24 +24,30 @@ abstract class Notifications_Object {
   /**
    * Get object title
    */
-  public static abstract function get_title();
+  public abstract function get_title();
   /**
    * Get object name
    */
-  public static abstract function get_name();
+  public abstract function get_name();
   /**
    * Build from db object or template
    */
   public static abstract function build_object($object);
   /**
-   * They need a user access function
-   */
-  public static abstract function user_access($account, $op = 'view');
-  /**
    * User access function
    */
-  public static function function object_access($type, $object, $user) {
-    
+  public abstract function user_access($account, $op = 'view');
+  /**
+   * Get information from notifications hooks
+   */
+  public static abstract function type_info($type = NULL, $property = NULL, $default = NULL);
+  /**
+   * Get information for specific instance.
+   * 
+   * This is useful for properties that can be overridden with alter hooks
+   */
+  public function get_info($property = NULL, $default = NULL) {
+    return $this->type_info($this->type, $property, $default);
   }
 }
 
@@ -51,7 +58,7 @@ abstract class Notifications_Object {
  * - All the objects have a 'type' property
  * - When serialized, the object itself won't be serialized
  */
-abstract class Notifications_Drupal_Object {
+abstract class Notifications_Object {
   // Object type
   public $type;
   public $value;
@@ -61,21 +68,20 @@ abstract class Notifications_Drupal_Object {
   /**
    * Constructor
    */
-  public function __construct($value) {
+  public function __construct($value = NULL) {
     if (is_numeric($value) || is_string($value)) {
       $this->value = $value;
     }
-    else {
+    elseif (is_object($value) && $value) {
       $this->object = $value;
-      $this->value = $this->object();
+      $this->value = $this->object_value($value);
     }
   }
   /**
    * Get object type title
-   */
-  public function get_title() {
-    return t('Object');
-  }
+   */  
+  public abstract function get_title();
+
   /**
    * Get object name
    */
@@ -99,17 +105,13 @@ abstract class Notifications_Drupal_Object {
       return new $class($value);
     }
     else {
-      $object = new Notifications_Object($value);
+      // We don't know this type, build default object
+      $object = new Notifications_Drupal_Object($value);
       $object->type = $type;
       return $object;
     }
   }
-  /**
-   * Check user access to view this object
-   */
-  function user_access($account) {
-    return TRUE;
-  }
+
   /**
    * Get object unique key as string. The default will be 'type:value'
    */
@@ -121,20 +123,23 @@ abstract class Notifications_Drupal_Object {
    */
   public function object() {
     if (!isset($this->object)) {
-      $object = isset($this->value) ? $this->object_load($this->value);
-      $this->object = $object ? $object : FALSE
+      $object = isset($this->value) ? $this->object_load($this->value) : NULL;
+      $this->object = $object ? $object : FALSE;
     }
-    return $this->object ? $this->object : NULL;
+    return $this->object;
   }
   /**
    * Load related object or data
    */
   public abstract static function object_load($value);
-  
   /**
    * Get name for object
    */
   public abstract static function object_name($object);
+  /**
+   * Map object to value (key)
+   */
+  public abstract static function object_value($object);
 
   /**
    * Check user access. By default it will be true if object can be loaded
@@ -268,6 +273,39 @@ abstract class Notifications_Drupal_Object {
 }
 
 /**
+ * Wrapper for generic Drupal objects
+ * 
+ * This basically implements abstract methods with some defaults
+ * 
+ * @todo Get some information from entities
+ */
+class Notifications_Drupal_Object extends Notifications_Object {
+  public function get_title() {
+    return t('Object');
+  }
+  /**
+   * Load related object or data
+   */
+  public static function object_load($value) {
+    return NULL;
+  }
+  
+  /**
+   * Get name for object
+   */
+  public static function object_name($object) {
+    return t('unknown');
+  }
+
+  /**
+   * Map object to value (key)
+   */
+  public static function object_value($object) {
+    return NULL;
+  }
+}
+
+/**
  * Node objects
  */
 class Notifications_Node extends Notifications_Drupal_Object {
@@ -283,6 +321,12 @@ class Notifications_Node extends Notifications_Drupal_Object {
    */
   public static function object_name($node) {
     return $node->title;
+  }
+  /**
+   * Get object key
+   */
+  public static function object_value($node) {
+    return $node->nid;
   }
   /**
    * Check user access
@@ -310,6 +354,12 @@ class Notifications_User extends Notifications_Drupal_Object {
    */
   public static function object_name($object) {
     return $object->name;
+  }
+  /**
+   * Get object key
+   */
+  public static function object_value($user) {
+    return $user->uid;
   }
   /**
    * Check user access

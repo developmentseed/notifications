@@ -37,7 +37,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
    * @param $name
    *   Arbitrary string. The name of the queue to work with.
    */
-  public function __construct($name = 'notifications') {
+  public function __construct($name) {
     $this->name = $name;
   }
 
@@ -413,7 +413,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
 /**
  * Items from the queue
  */
-class Notifications_Queue_Item extends Notifications_Object {
+class Notifications_Queue_Item {
   // Queue parameters
   public $sqid;
   public $name;
@@ -439,7 +439,15 @@ class Notifications_Queue_Item extends Notifications_Object {
   // Temporary store
   protected $events;
   protected $subscriptions;
-  
+
+  /**
+   * Constructor
+   */
+  public function __construct($template = array()) {
+    foreach ((array)$template as $key => $value) {
+      $this->$key = $value;
+    }
+  }
   /**
    * Get queue object
    */
@@ -502,7 +510,7 @@ class Notifications_Queue_Process {
   public function __construct() {
     $this->limit = $this->default_limits();
     $this->option('batch_size', $this->batch_size);
-    $this->option('language' => $this->process_language);
+    $this->option('language', $this->process_language);
   }
   /**
    * Add worker to the process
@@ -610,7 +618,7 @@ class Notifications_Queue_Process {
    * Default limits
    */
   protected function default_limits() {
-    return variable_get('notifications_process_limits', array('items' => 10, 'messages' => 10, 'process' => 60);
+    return variable_get('notifications_process_limits', array('items' => 10, 'messages' => 10, 'process' => 60));
   }
   /**
    * Get / set process option (static = same for all processes)
@@ -748,7 +756,7 @@ class Notifications_Queue_Worker {
 /**
  * Queue worker. Processes batches
  */
-class Notifications_Batch_Worker extends Notifications_Queue_Worker{
+abstract class Notifications_Batch_Worker extends Notifications_Queue_Worker{
   /**
    * Create a new batch object
    */

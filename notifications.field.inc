@@ -6,9 +6,9 @@
  */
 
 /**
- * Field for notifications objects
+ * Base class for Notifications fields
  */
-class Notifications_Field {
+abstract class Notifications_Field {
   // Field type
   public $type;
   // Value
@@ -41,7 +41,7 @@ class Notifications_Field {
     }
     else {
       // Unknown field type, let's build something
-      $field = new Notifications_Field($value, $index);
+      $field = new Notifications_Field_Default($value, $index);
       $field->type = $type;
       return $field;
     }
@@ -66,15 +66,12 @@ class Notifications_Field {
   /**
    * Get title for field
    */
-  function get_title() {
-    return t('Field');
-  }
+  public abstract function get_title();
   /**
    * Get description
    */
-  function get_description() {
-    return t('Notifications field');
-  }
+  public abstract function get_description();
+
 
   /**
    * Get link if this field is linked to an object
@@ -82,9 +79,6 @@ class Notifications_Field {
   function get_link($options = array()) {
     if ($path = $this->get_path() && $name = $this->get_name()) {
       return l($name, $path, $options);
-    }
-    else {
-      return $this->get_name();
     }
   }
   /**
@@ -102,13 +96,7 @@ class Notifications_Field {
     }
     return $this->object;
   }
-  /**
-   * Get query conditions for a given object
-   * @param $object
-   */
-  function get_object_condition($object) {
-    
-  }
+
   /**
    * Get query condition for current value
    */
@@ -144,14 +132,7 @@ class Notifications_Field {
   function index() {
     return $this->object_type . ':' . $this->type . ':' . (isset($this->value) ? $this->value : '');
   }
-  /**
-   * Get unfiltered name for this field value
-   */
-  function name() {
-    if (!isset($this->name)) {
-      $this->name = $this->get_object()->value() ? $this->get_object()->name() : '';
-    }
-  }
+
   /**
    * Check if the field has a valid value
    */
@@ -214,9 +195,26 @@ class Notifications_Field {
 }
 
 /**
+ * Default field when we don't have information
+ */
+class Notifications_Field_Default {
+  /**
+   * Get title for field
+   */
+  function get_title() {
+    return t('Field');
+  }
+  /**
+   * Get description
+   */
+  function get_description() {
+    return t('Notifications field');
+  }  
+}
+/**
  * Field with autocomplete values
  */
-class Notifications_Field_Autocomplete extends Notifications_Field {
+abstract class Notifications_Field_Autocomplete extends Notifications_Field {
   /**
    * Format value for autocomplete
    */
@@ -247,7 +245,7 @@ class Notifications_Field_Autocomplete extends Notifications_Field {
 /**
  * Field with selectable values
  */
-class Notifications_Field_Select extends Notifications_Field {
+abstract class Notifications_Field_Select extends Notifications_Field {
   public abstract function select_options();
   /**
    * Build a form element to edit this field
@@ -273,7 +271,7 @@ class Notifications_Field_Select extends Notifications_Field {
  * Node fields
  */
 class Notifications_Node_Field extends Notifications_Field_Autocomplete {
-  public $type = 'node';
+  public $type = 'node:nid';
   public $object_type = 'node';
   /**
    * Get field name
@@ -281,6 +279,12 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   function get_title() {
     return t('Node');
   }
+  /**
+   * Get description
+   */
+  function get_description() {
+    return t('Node');
+  } 
   /**
    * Get object name as plain string
    */
@@ -303,7 +307,7 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
    * Format object name
    */
   function format_name($format = NOTIFICATIONS_FORMAT_HTML) {
-    return notifications_node_nid2title()
+    return notifications_node_nid2title();
   }
   /**
    * Get autocomplete path
@@ -314,8 +318,8 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   /**
    * Parse value from autocomplete
    */
-  function autocomplete_parse($string, $field = NULL) {
-    return notifications_node_title2nid($string, $field)
+  function autocomplete_parse($string) {
+    return notifications_node_title2nid($string, $field);
   }
   /**
    * Format value for autocomplete
@@ -342,8 +346,20 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
  * Drupal user
  */
 class Notifications_User_Field extends Notifications_Field_Autocomplete {
-  public $type = 'user';
+  public $type = 'user:uid';
   public $object_type = 'user';
+  /**
+   * Get title for field
+   */
+  function get_title() {
+    return t('User');
+  }
+  /**
+   * Get description
+   */
+  function get_description() {
+    return t('User name');
+  } 
    /**
    * Get autocomplete path
    */
@@ -565,12 +581,6 @@ function notifications_field_real_value($type, $value) {
   }
 }
 
-/**
- * Get type information for field. For now its just subscription fields
- */
-function notifications_field_type($type = NULL, $property = NULL) {
-  return notifications_field_type($type, $property);
-}
 
 /**
  * Get options for fields with options callback, may depend on subscription type

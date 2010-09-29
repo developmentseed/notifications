@@ -483,6 +483,20 @@ function notifications_subscription_type($type = NULL, $field = NULL, $default =
 }
 
 /**
+ * Get subscription types available for a user account
+ */
+function notifications_subscription_user_types($account = NULL) {
+  $account = $account ? $account : $GLOBALS['user'];
+  $types = array();
+  foreach (notifications_subscription_enabled_types() as $type => $info) {
+    if (notifications_subscription($type)->user_access($account)) {
+      $types[$type] = $info;
+    }
+  }
+  return $types;
+}
+
+/**
  * Build subscription type
  */
 function notifications_subscription($type) {
@@ -505,26 +519,6 @@ function notifications_template($type = NULL, $field = NULL) {
   $types = notifications_info('notifications templates');
   return messaging_array_info($types, $type, $field);
 }
-
-/**
- * Get subscription types available for a user account
- */
-function notifications_user_subscription_types($account = NULL) {
-  $account = $account ? $account : $GLOBALS['user'];
-  $types = array();
-  foreach (notifications_subscription_types() as $type => $info) {
-    if (!empty($info['disabled']) || !notifications_subscription_type_enabled($key) {
-      continue;
-    }
-    else {
-      $subscription = Notifications_Subscription_Type::build($type);
-      if ($subscription->user_access($account)) {
-        $types[$type] = $subscription;
-      }
-    }  
-  }
-}
-
 
 /*** Old code ****/
 
@@ -779,32 +773,34 @@ function notifications_delete_destination($mdid) {
 }
 
 /**
- * Entry point for the object API
+ * Create a wrapped object and keep a cache of created objects.
  * 
- * @param
- *   Variable number of arguments, the first one is the notifications_object_* function to invoke
- */
-function notifications_object() {
-  $args = func_get_args();
-  $function = 'notifications_object_' . array_shift($args);
-  if (!function_exists($function)) notifications_include('object.inc');
-  return call_user_func_array($function, $args);
-}
-
-/**
- * Get info about object types
- *
  * @param $type
- *   String, the subscriptions type OPTIONAL
- * @param $field
- *   String, a specific field to retrieve info from OPTIONAL
- *   
- *   Information for a given field and type
- *   or information for a given field for all types
+ *   Object type
+ * @parma $value
+ *   Object or object key
  */
-function notifications_object_type($type = NULL, $field = NULL, $default = NULL) {
-  $types = notifications_info('object types');
-  return messaging_array_info($types, $type, $field, $default = NULL);
+function notifications_object($type, $value) {
+  $cache = &drupal_static(__FUNCTION__);
+  $class = notifications_object_type($type, 'class', 'Notifications_Drupal_Object');
+  if (is_object($value) && is_a($value, $class)) {
+    // Already an instance of the right class, just return
+    return $object;
+  }
+  elseif (is_numeric($value) || is_string($value)) {
+    $key = $value;
+  }
+  if (isset($key) && isset($cache[$type][$key])) {
+    return $cache[$type][$key];
+  }
+  else {
+    $object = Notifications_Object::build($type, $value);
+    // Not all objects are cacheable, only if they have a value
+    if ($object->value) {
+      $cache[$type][$object->value] = $object;
+    }
+    return $object;
+  }
 }
 
 /**
@@ -837,19 +833,16 @@ function notifications_object_load($type, $value) {
  *   Information for a given field and type
  *   or information for a given field for all types
  */
-function notifications_subscription_types($type = NULL, $field = NULL, $check_access = FALSE) {
-  $types = notifications_info('subscription types');
-
-  $result = $types;
-  if ($check_access) {
-    foreach ($types as $key => $info) {
-      if (!empty($info['disabled']) || !notifications_subscription_type_enabled($key) || (!empty($info['access']) && !user_access($info['access']))) {
-        unset($result[$key]);
+function notifications_subscription_enabled_types($type = NULL, $field = NULL) {
+  $types = &drupal_static(__FUNCTION__);
+  if (!isset($types)) {
+    foreach (notifications_subscription_type() as $key => $info) {
+      if (empty($info['disabled']) && notifications_subscription_type_enabled($key)) {
+        $types[$key] = $info;
       }
     }
   }
-
-  return messaging_array_info($result, $type, $field);
+  return messaging_array_info($types, $type, $field);
 }
 
 /**
@@ -930,35 +923,6 @@ function notifications_format_title_description($item) {
     $description = check_plain($item['name']);
   } 
   return '<strong>' . check_plain($item['title']) . '</strong>' . (!empty($description) ? ' ' . $description : '');
-}
-
-/**
- * Get information from an array of data
- * 
- * @param $data
- *   Array of data indexed by type
- * @param $type
- *   Type to return out of the array, none to return all types
- * @param $property
- *   Property to return, none to return all properties
- */
-function messaging_array_info($data, $type = NULL, $field = NULL) {
-  if ($field && $type) {
-    return isset($data[$type][$field]) ? $data[$type][$field] : NULL;
-  }
-  elseif ($field) {
-    $return = array();
-    foreach ($data as $id => $info) {
-      $return[$id] = isset($info[$field]) ? $info[$field] : NULL;
-    }
-    return $return;
-  }
-  elseif ($type) {
-    return isset($data[$type]) ? $data[$type] : array();
-  }
-  else {
-    return $data;
-  }  
 }
 
 /**

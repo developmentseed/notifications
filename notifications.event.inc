@@ -9,7 +9,7 @@
 /**
  * Notifications Event class
  */
-class Notifications_Event extends Notifications_Object {
+class Notifications_Event extends Notifications_Entity {
   // Object unique id
   public $eid;
   // Module and type of the event, will define it
@@ -62,7 +62,24 @@ class Notifications_Event extends Notifications_Object {
     $class = notifications_event_type($object->type, 'class', 'Notifications_Event');
     return new $class($object);
   }
-
+  /**
+   * Get object title
+   */
+  public function get_title() {
+    return t('Event');
+  }
+  /**
+   * Get object name
+   */
+  public function get_name() {
+    return t('Event');
+  }
+  /**
+   * Get subscription type information
+   */
+  public static function type_info($type = NULL, $property = NULL, $default = NULL) {
+    return notifications_event_type($type, $property, $default);
+  }
   /**
    * Load event by id
    */
@@ -261,7 +278,7 @@ class Notifications_Event extends Notifications_Object {
    * 
    * Replaces notifications_event_user_access($event, $account);
    */
-  public function user_access($account) {
+  public function user_access($account, $op = 'view') {
     foreach ($this->get_objects() as $object) {
       if (!$object->user_access($account)) {
         return FALSE;
@@ -385,8 +402,8 @@ class Notifications_Event extends Notifications_Object {
       $condition = $this->get_field_conditions($types);
       if ($condition && $condition->count()) {
         $query
-          ->leftJoin('notifications_fields', 'f', 's.sid = f.sid');
-          ->condition($condition)
+          ->leftJoin('notifications_fields', 'f', 's.sid = f.sid')
+          ->condition($condition);
       }
       else {
         $query->condition('type', $types);

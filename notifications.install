@@ -234,17 +234,9 @@ function notifications_schema() {
 }
 
 /**
- * Implementation of hook_install().
- */
-function notifications_install() {
-  drupal_install_schema('notifications');
-}
-
-/**
  * Implementation of hook_uninstall().
  */
 function notifications_uninstall() {
-  drupal_uninstall_schema('notifications');
   foreach (array('event_enabled', 'send_intervals', 'sender', 'sendself', 'send_immediate') as $name) {
     variable_del("notifications_$name");
   }
