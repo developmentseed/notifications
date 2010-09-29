@@ -29,10 +29,15 @@ function notifications_tags_menu() {
 }
 
 /**
- * Implementation of hook_perm()
+ * Implementation of hook_permission()
  */
-function notifications_tags_perm() {
-  return array('subscribe to taxonomy terms');
+function notifications_tags_permission() {
+  return array(
+    'subscribe to taxonomy terms' =>  array(
+      'title' => t('Subscribe to taxonomy terms'),
+      'description' => t('Subscribe to content tagged with a given taxonomy term.'),
+    ),
+  );
 }
 
 /**
@@ -42,40 +47,26 @@ function notifications_tags_notifications($op) {
   switch ($op) {
 
     case 'subscription types':
-      $types['taxonomy'] = array(
-        
+      $types['taxonomy_term'] = array(
         'title' => t('Tags'),
-        'description' => t('Subscribe to content tagged with a given taxonomy term.'),
-        'access' => 'subscribe to taxonomy terms',
-        'fields' => array('tid'),
-        'page callback' => 'notifications_tags_user_page',
-        'user page' => 'user/%user/notifications/taxonomy',
-        'event_type' => 'node',
+        'class' => 'Notifications_Taxonomy_Term_Subscription',
+        'access' => array('subscribe to taxonomy terms'),
       );
       return $types;
 
     case 'subscription fields':
       // Information about available fields for subscriptions
-      $fields['tid'] = array(
-        'name' => t('Taxonomy term'),
-        ''
-        'field' => 'tid',
-        'type' => 'int',
-        'object_type' => 'term',
+      $fields['term:tid'] = array(
+        'title' => t('Taxonomy term'),
+        'class' => 'Notifications_Term_Field',
       );
       return $fields;
     
     case 'object types':
       // Define object types used by subscriptions and events
-      $types['term'] = array(
-        'name' => t('Taxonomy term'),
+      $types['taxonomy_term'] = array(
+        'title' => t('Taxonomy term'),
         'class' => 'Notifications_Tags_Term'
-        'key' => 'tid',
-        'load callback' => 'taxonomy_get_term',
-        'autocomplete path' => 'notifications_tags/autocomplete/single',
-        'format callback' => 'notifications_tags_term_name',
-        'value callback' => 'notifications_tags_term_tid',
-        'access' => 'access content',
       );
       return $types;
  

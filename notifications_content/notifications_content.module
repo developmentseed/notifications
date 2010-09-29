@@ -83,12 +83,23 @@ function notifications_content_access($account, $perm) {
 }
 
 /**
- * Implementation of hook_perm()
+ * Implementation of hook_permission()
  */
-function notifications_content_perm() {
+function notifications_content_permission() {
   return array(
-    'subscribe to content', 'subscribe to content type', 'subscribe to author',
-    'subscribe to content type and author', 'skip notifications'
+    'subscribe to content' =>  array(
+      'title' => t('Subscribe to content'),
+      'description' => t('Subscribe to content posted or updated.'),
+    ),
+    'subscribe to content type' =>  array(
+      'title' => t('Subscribe to content type'),
+      'description' => t('Subscribe to all content from a content type.'),
+    ),
+    'subscribe to author' =>  array(
+      'title' => t('Subscribe to author'),
+      'description' => t('Subscribe to content posted by a given user.'),
+    ),
+
   );
 }
 
@@ -231,61 +242,34 @@ function notifications_content_notifications($op) {
       // Some types may be globally disabled (for all content types), mark as such
       $disabled = !variable_get('notifications_content_per_type', 0);
       $types['thread'] = array(
-        'event_type' => 'node',
-        'object_type' => 'node',
         'title' => t('Thread'),
         'class ' => 'Notifications_Node_Subscription',
-        'access' => 'subscribe to content',
-        'page callback' => 'notifications_content_page_thread',
-        'user page' => 'user/%user/notifications/thread',
-        'fields' => array('nid'),
+        'access' => array('subscribe to content'),
         'description' => t('Subscribe to all changes and comments for a thread.'),
-        'name callback' => 'notifications_content_subscription_name',
       );
       $types['nodetype'] = array(
-        'event_type' => 'node',
-        'object_type' => 'node',
         'title' => t('Content type'),
-        'access' => 'subscribe to content type',
-        'page callback' => 'notifications_content_page_nodetype',
-        'user page' => 'user/%user/notifications/nodetype',
-        'fields' => array('type'),
+        'class' => 'Notifications_Node_Type_Subscription',
+        'access' => array('subscribe to content type'),
         'description' => t('Subscribe to all content of a given type.'),
-        'name callback' => 'notifications_content_subscription_name',
       );
-      /*
       $types['author'] = array(
-        'event_type' => 'node',
-        'object_type' => 'user',
         'title' => t('Author'),
-        'access' => 'subscribe to author',
-        'page callback' => 'notifications_content_page_author',
-        'user page' => 'user/%user/notifications/author',
-        'fields' => array('author'),
+        'class' => 'Notifications_Author_Subscription',
+        'access' => array('subscribe to author'),
         'description' => t('Subscribe to all content submitted by a user.'),
-        'name callback' => 'notifications_content_subscription_name',
       );
       // This is a complex type, combining two fields
       $types['typeauthor'] = array(
-        'event_type' => 'node',
-        'object_type' => array('node', 'user'), // This makes sense per node and per user
         'title' => t('Content type by author'),
-        'access' => 'subscribe to content type and author',
-        'page callback' => 'notifications_content_page_typeauthor',
-        'user page' => 'user/%user/notifications/typeauthor',
-        'fields' => array('author', 'type'),
+        'class' => 'Notifications_Node_Type_Author_Subscription',
+        'access' => array('subscribe to content', 'subscribe to author'),
         'description' => t('Subscribe to all content of a given type submitted by a user.'),
-        'name callback' => 'notifications_content_subscription_name',
       );
-      */
       return $types;
 
     case 'field types':
       // Information about available fields for subscriptions
-      // - format callback => will be used to convert the value into a displayable output
-      // - value callback => will be used to convert autocomplete name into field value
-      // - autocomplete path => path for autocomplete field
-      // - options callback / arguments => used to produce a drop down field
       $fields['node:nid'] = array(
         'title' => t('Node'),
         'class' => 'Notifications_Node_Field',
@@ -310,43 +294,52 @@ function notifications_content_notifications($op) {
       return $types;
 
     case 'event types':
-      // Node inserts are not grouped by node but all together. The digest will look like:
-      //   New content has been submitted
-      //   - Story Title1 by Author1
-      //   - Event Title2 by Author2
       $types['node-insert'] = array(
         'type' => 'node',
         'action' => 'insert',
-        'name' => t('New content of type [type-name] has been submitted'),
-        'line' => t('[type-name] [title] by [author-name]'),
-        'digest' => array('node', 'type'),
-        'description' => t('Node creation'),
+        'title' => t('Node creation'),
+        'class' => 'Notifications_Node_Insert_Event',
         'template' => 'notifications-event-node-insert',
       );
-      // These other events are grouped for each node. The digest will look like:
-      //   Story: Title of the story
-      //   - The story has been updated
-      //   - New comment by User: Comment title
       $types['node-update'] = array(
         'type' => 'node',
         'action' => 'update',
-        'name' => t('[type-name]: [title]'),
-        'line' => t('The [type-name] has been updated'),
-        'digest' => array('node', 'nid'), 
-        'description' => t('Node update'),
+        'class' => 'Notifications_Node_Update_Event',
+        'title' => t('Node update'),
         'template' => 'notifications-event-node-update',
       );      
       $types['node-comment'] = array(
         'type' => 'node',
         'action' => 'comment',
-        'name' => t('[type-name]: [title]'),
-        'line' => t('New comment by [comment-author-name]: [comment-title]'), 
-        'digest' => array('node', 'nid'),
-        'description' => t('Node comment'),
+        'Notifications_Node_Comment_Event',
+        'title' => t('Node comment'),
         'template' => 'notifications-event-node-comment',
       );
       return $types;
-    
+
+    case 'message templates':
+      // Node inserts are not grouped by node but all together. The digest will look like:
+      //   New content has been submitted
+      //   - Story Title1 by Author1
+      //   - Event Title2 by Author2
+      $types['notifications-event-node-insert'] = array(
+        'title' => t('Template for node posts'),
+        'class' => 'Notifications_Node_Event_Comment_Template',
+      );
+      // These other events are grouped for each node. The digest will look like:
+      //   Story: Title of the story
+      //   - The story has been updated
+      //   - New comment by User: Comment title
+      $types['notifications-event-node-update'] = array(
+        'title' => t('Template for node updates'),
+        'class' => 'Notifications_Node_Event_Comment_Template',
+      );
+      $types['notifications-event-node-comment'] = array(
+        'title' => t('Template for node comments'),
+        'class' => 'Notifications_Node_Event_Comment_Template',
+      );      
+      return $types;
+
     case 'event classes':
       return array('node' => t('Node'));
       

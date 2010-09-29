@@ -86,6 +86,19 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   }
   
   /**
+   * Filter out fields that have no value set ($isset = FALSE to get the ones that are set)
+   */
+  public static function filter_fields($fields, $isset = TRUE) {
+    $result = array();
+    foreach ($fields as $key => $field) {
+      if ($isset && isset($field->value) || !$isset && !isset($field->value)) {
+        $result[$key] = $field;
+      }
+    }
+    return $result;    
+  }
+ 
+  /**
    * Save fields from form submission
    */
   public function set_properties($values, $fields) {
@@ -249,7 +262,19 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
    * User access function
    */
   public function user_access($account, $op = 'view') {
-    return TRUE;
+    $access = $this->get_info('access');
+    // Access may be true/false or an array of permissions
+    if ($access && is_array($access)) {
+      foreach ($access as $perm) {
+        if (!user_access($perm, $account)) {
+          return FALSE;
+        }
+      }
+      return TRUE;
+    }
+    else {
+      return (boolean)$access;
+    }
   }
   /**
    * Build subscription type
@@ -295,6 +320,25 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
     }
     return $fields;
   }
+  /**
+   * Get instance fields that don't have a value set for this type
+   */
+  function get_instance_fields() {
+    return $this->filter_fields($this->get_fields());
+  }
+  /**
+   * Get type fields, the ones that have a value set for this type
+   */
+  function get_type_fields() {
+    return $this->filter_fields($this->get_fields(), TRUE);
+  }
+  /**
+   * Get editable fields, usually same as instance fields
+   */
+  function get_editable_fields() {
+    return $this->get_instance_fields();
+  }
+
   /**
    * Set fields
    */
@@ -451,10 +495,18 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     return TRUE;
   }
   /**
+   * Check whether this is a stored instance
+   */
+  public function is_stored() {
+    return !empty($this->sid);
+  }
+  /**
    * User access function
    */
   public function user_access($account, $op = 'view') {
+    // First check access to subscription type
     return $this->subscription_type()->user_access($account, $op);
+    
   }
   /**
    * Get subscription type object
@@ -783,19 +835,16 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * @param $field
    *   Field object with one or more of these properties: key, type, field, value
    */
-  function set_field($field, $replace = FALSE) {
-    if (!isset($field->key) || !$replace) {
-      $field->key = isset($this->fields) ? count($this->fields) : 0;
-    }
-    // Add to the fields array, may replace an old one
-    $this->fields[$field->key] = $field;
+  function set_field($field) {
+    $field->subscription = $this;
+    $this->fields[$field->position] = $field;
   }
   /**
    * Get fields as array of field objects
    */
   function get_fields() {
     if (!isset($this->fields)) {
-      if ($this->is_instance()) {
+      if ($this->is_stored()) {
         $this->load_fields();
       }
       else {
@@ -803,6 +852,24 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       }
     }
     return $this->fields;
+  }
+  /**
+   * Get instance fields that don't have a value set for this type
+   */
+  function get_instance_fields() {
+    return $this->subscription_type()->get_instance_fields();
+  }
+  /**
+   * Get type fields, the ones that have a value set for this type
+   */
+  function get_type_fields() {
+    return $this->subscription_type()->get_type_fields();
+  }
+  /**
+   * Get editable fields, usually same as instance fields
+   */
+  function get_editable_fields() {
+    return $this->get_instance_fields();
   }
   /**
    * Check all fields are there and optinally that they have a value
@@ -873,7 +940,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Get fields from subscription type as normalized array of objects
    */
   function get_type_fields() {
-    return $this->normalize_fields($this->get_type('fields'));
+    return $this->subscription_type()->get_type_fields();
   }
   /**
    * Convert fields to a standard format: arrray of object fields
@@ -994,17 +1061,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function get_instance_fields() {
     return $this->filter_fields($this->get_fields());
-  }
-  /**
-   * Filter out fields that have no value set ($isset = FALSE to get the ones that are set)
-   */
-  public static function filter_fields($fields, $isset = TRUE) {
-    foreach ($fields as $key => $field) {
-      if ($isset && !isset($field->value) || !$isset && isset($field->value)) {
-        unset($fields[$key]);
-      }
-    }
-    return $fields;    
   }
 
   /**
@@ -1411,341 +1467,4 @@ class Notifications_Subscription_List {
     }
     return $elements;
   }
-}
-
-
-/**
- * Main Subscription form builder
- */
-function notifications_subscription_form(&$form_state, $subscription, $destination_path = '') {
-  module_load_include('pages.inc', 'notifications');
-  return notifications_subscription_base_form($form_state, $subscription, $destination_path);
-}
-
-/**
- * Main subscription form validate
- */
-function notifications_subscription_form_validate($form, &$form_state) {
-  module_load_include('pages.inc', 'notifications');
-  return notifications_subscription_base_form_validate($form, $form_state);
-}
-
-/**
- * Main subscriptions form submit
- */
-function notifications_subscription_form_submit($form, &$form_state) {
-  module_load_include('pages.inc', 'notifications');
-  return notifications_subscription_base_form_submit($form, $form_state);
-}
-
-/**
- * Form with multiple subscription options
- */
-function notifications_subscriptions_options_form($form_state, $subscriptions, $account = NULL, $destination = NULL, $length = 40) {
-  $account = $account ? $account : $GLOBALS['user'];
-  notifications_include('object.inc');
-  $form = notifications_object_options_form($form_state, $subscriptions);
-  // If anonymous account, add destination subform
-  if (!$account->uid) {
-    $form = notifications_subscription_destination_subform($form, $account, $destination = NULL, NULL, $length);
-  }
-  return $form;
-}
-
-/**
- * Subform with multiple subscription options
- */
-function notifications_subscriptions_options_subform($subscriptions, $buttons = TRUE) {
-  notifications_include('object.inc');
-  return notifications_object_options_subform($subscriptions, $buttons);
-}
-/**
- * Wrapper submit callback se we can do an include before actual submission
- */
-function notifications_subscriptions_options_form_submit($form, &$form_state) {
-  notifications_include('object.inc');
-  return notifications_object_options_form_submit($form, $form_state);
-}
-
-/**
- * Add destination subform
- */
-function notifications_subscription_destination_subform($form, $account, $destination = NULL, $send_methods = NULL, $length = 40) {
-  notifications_include('destination.inc');
-  $form['send_method'] = notifications_destination_address_subform($account, $destination, $send_methods, $length);
-  // Add our validate and submit callbacks first
-  $form['#validate'] = array_merge(array('notifications_subscription_destination_subform_validate'), isset($form['#validate']) ? $form['#validate'] : array());
-  $form['#submit'] = array_merge(array('notifications_subscription_destination_subform_submit'), isset($form['#submit']) ? $form['#submit'] : array());
-  return $form;
-}
-
-/**
- * Validate submitted destination
- */
-function notifications_subscription_destination_subform_validate($form, &$form_state) {
-  notifications_include('destination.inc');
-  // Get destination from form and check it is ok for an anonymous user
-  $dest = notifications_destination_parse_submitted($form_state['values'], TRUE);
-  if (!empty($dest['method']) && !empty($dest['address'])) {
-    // Set destination field so we don't validate again send method later
-    $form_state['values']['destination'] = TRUE;
-    // Set send method in case we need some more validation for the subscription
-    $form_state['values']['send_method'] = $dest['method'];
-  }
-}
-
-/**
- * Create submitted destination
- */
-function notifications_subscription_destination_subform_submit($form, &$form_state) {
-  notifications_include('destination.inc');
-  // Get destination from form and add method / destination to form values
-  $dest = notifications_destination_parse_submitted($form_state['values'], FALSE);
-  if ($destination = Messaging_Destination::create($dest)) {
-    $form_state['values']['send_method'] = $dest['method'];
-    $form_state['values']['destination'] = $destination;
-    $form_state['values']['subscription_fields'][] = 'send_method';
-    $form_state['values']['subscription_fields'][] = 'destination';
-  }
-  else {
-    // We should have trapped this on validation. Just in case print an error message.
-    drupal_set_message(t('Cannot create a destination for this subscription.'), 'error');
-  }
-}
-
-/**
- * Get subscribe / unsubscribe page link for subscription
- * 
- * @param $op
- *   Operation: 'subscribe', 'unsubscribe'
- * @param $subscription
- *   Subscription object, may be instance or not
- * @param $options
- *   Link options
- */
-function notifications_subscription_get_link($op, $subscription, $options = array()) {
-  $options += array('destination' => $_GET['q']);
-  if ($op == 'subscribe' && variable_get('notifications_ui_subscribe_links', 0)) {
-    $options += array('signed' => TRUE, 'confirm' => FALSE);
-  }
-  if ($op == 'unsubscribe' && variable_get('notifications_ui_unsubscribe_links', 0)) {
-    $options += array('signed' => TRUE, 'confirm' => FALSE);
-  } 
-  return notifications_build_link($op, $options, 'subscription', $subscription);
-}
-
-
-/**
- * Check subscription parameters
- */
-function notifications_check_subscription($subscription) {
-  if (!$subscription->check_account()) {
-    $subscription->error_message = t('Invalid user account for this subscription.');
-    return FALSE;
-  }
-  elseif (!$subscription->check_fields()) {
-    $subscription->error_message = t('Invalid field values for this subscription.');
-    return FALSE;
-  }
-  elseif (!$subscription->check_destination()) {
-    $subscription->error_message = t('The destination method or address for the subscription is not valid.');
-    return FALSE;
-  }
-  else {
-    return TRUE;
-  }
-}
-
-/**
- * Get an individual subscription.
- *
- * @param $subs
- *   Either a subscription object or a subscription id (sid).
- * @param $refresh
- *   Force cache refresh
- * @return
- *   Subscriptions object.
- */
-function notifications_load_subscription($subs, $refresh = FALSE) {
-  $subscriptions = &drupal_static(__FUNCTION__);
-  if (is_object($subs)) {
-    if(is_a($subs, 'Notifications_Subscription')) {
-      $subscriptions[$subs->sid] = $subs;
-    }
-    else {
-      $subscriptions[$subs->sid] = Notifications_Subscription::build($subs);
-    }
-    return $subscriptions[$subs->sid];
-  }
-  else {
-    if ($refresh || !$subscriptions || !array_key_exists($subs, $subscriptions)) {
-      $subscriptions[$subs] = Notifications_Subscription::load($subs);
-    }
-    return $subscriptions[$subs];
-  }
-}
-
-/**
- * Delete subscription and clean up related data, included the static cache
- * 
- * It also removes pending notifications related to that subscription 
- * 
- * @param $sid
- *   Subscription object or sid or array of sids of subscription/s to delete
- */
-function notifications_subscription_delete($sid) {
-  $sid = is_object($sid) ? $sid->sid : $sid;
-  $cache = &drupal_static('notifications_load_subscription');
-
-  if (is_array($sid)) {
-    $where = 'sid IN (' . db_placeholders($sid) . ')';
-    if ($cache) {
-      $cache = array_diff_key($cache, array_flip($sid));;
-    }
-  }
-  else {
-    $where = "sid = %d";
-    $cache[$sid] = NULL;
-  }
-  foreach (array('notifications', 'notifications_fields') as $table) {
-    db_query("DELETE FROM {". $table ."} WHERE " . $where, $sid);
-  }
-  // Delete queued notifications for this subscription
-  notifications_queue()->queue_delete(array('sid' => $sid));
-}
-
-/**
- * Delete multiple subscriptions and clean up related data (pending notifications, fields).
- * 
- * Warning: If !$limit, it will delete also subscriptions with more conditions than the fields passed.
- * 
- * @param array $params
- *   Array of multiple conditions in the notifications table to delete subscriptions
- * @param array $field_conditions
- *   Array of multiple conditions in the notifications_fields table to delete subscriptions
- * @param $limit
- *   Whether to limit the result to subscriptions with exactly that condition fields
- *   
- * @return int
- *   Number of deleted subscriptions
- */
-function notifications_delete_subscriptions($params, $field_conditions = array(), $limit = FALSE) {
-  notifications_include('query.inc');
-
-  // For exact condition fields we add one more main condition.
-  if ($limit) {
-    $params += array('conditions' => count($field_conditions));
-  }
-   // This will get partially loaded objects, only with sid field
-  $query['select'][] = 's.sid';
-  $subscriptions = notifications_query_subscriptions($params, $field_conditions, $query, FALSE);
-
-  // This is the actual deletion, pass the array of sids
-  if ($subscriptions) {
-    notifications_subscription_delete(array_keys($subscriptions));
-  }
-  return $subscriptions ? count($subscriptions) : 0;
-}
-
-
-/**
- * Get subscriptions that match a set of conditions.
- *
- * @param $main_conditions
- *   Conditions for the main notifications table
- * @param $field_conditions
- *   Optional array of condition fields. The elements may be
- *   - single field => value pairs 
- *   - or numeric key => array('type' => field, 'value' => value)
- * @param $exact_fields
- *   Whether to limit the result to subscriptions with exactly that condition fields. Otherwise we
- *   look for subscriptions that have and match that fields but may have more than that.
- * @param $key
- *   Optional key field to use as the array index. Will default to sid 
- *   For notifications with one field, it may be 'value' or 'intval'
- * @param $pager
- *   Whether to throw a pager query 
- * @return
- *   Array of subscriptions indexed by uid, module, field, value, author
- * 
- * @todo Check field types for building the query
- */
-function notifications_get_subscriptions($main_conditions, $field_conditions = NULL, $exact_fields = TRUE, $key = 'sid', $pager = NULL) {
-  notifications_include('query.inc');
-  // Build query conditions using the query builder.  
-  $query['select'][] = 's.*';
-  // If we have the exact fields, make sure we match only the rows with this number of conditions
-  if ($exact_fields && isset($field_conditions)) {
-    $main_conditions += array('conditions' => count($field_conditions));
-  }
-  // Query for the notifications table
-  $result = notifications_query_subscriptions($main_conditions, $field_conditions, $query);
-
-  // Build list with results, we may need to index by a different field
-  if ($key == 'sid') {
-    $subscriptions = $result;
-  }
-  else {
-    $subscriptions = array();
-    foreach ($result as $subs) {
-      if ($key == 'value' || $key == 'intval') {
-        $field = array_shift($subs->get_fields());
-        $subscriptions[$field->value] = $subs;
-      }
-      else {
-        $subscriptions[$subs->$key] = $subs;
-      }      
-    }
-  }
-
-  return $subscriptions;
-}
-
-/**
- * Get active subscriptions for a given user to some object
- * 
- * This is a shorthand function to quickly check some types of subscriptions.
- * 
- * @param $account
- *   User id or user account object to check subscriptions for
- * @param $type
- *   Object type
- * @param $field
- *   Field type for the subscription. I.e. for a node it will be nid
- * @param $value
- *   Field value to check subscriptions to. I.e. $node
- * 
- * @return
- *   Array of subscriptions for this user and object indexed by sid 
- */
-function notifications_user_get_subscriptions($account, $type, $object, $refresh = FALSE) {
-  $subscriptions = &drupal_static(__FUNCTION__);
-  $uid = messaging_user_uid($account);
-  // No subscriptions for anonymous users
-  if (!$uid) return array();
-  
-  // Check the object exists, is loaded and we've got a key field
-  $object = notifications_object_load($type, $object);
-  $key = notifications_object_type($type, 'key_field');
-  if (!$object || !$key || empty($object->$key)) return array();
-  
-  // Now we've got the key fields for caching, try the cache or find subscriptions
-  if ($refresh || !isset($subscriptions[$uid][$type][$object->$key])) {
-    // Collect subscription types for this object and this account
-    // Get allowed subscription options for this account to this object
-    $user_subscriptions = array();
-    $subscribe_options = notifications_object_subscribe_options($type, $object, messaging_user_object($account));
-    foreach ($subscribe_options as $template) {
-      $type_subscriptions = notifications_get_subscriptions(
-        array('uid' => $uid, 'type' => $template['type'], 'status' => Notifications_Subscription::STATUS_ACTIVE), // Main conditions
-        $template['fields'], // Field conditions
-        TRUE // Match exactly these condition fields, no less, no more
-      );
-      if ($type_subscriptions) {
-        $user_subscriptions += $type_subscriptions; //array_merge($user_subscriptions, $type_subscriptions);
-      }
-    }
-    $subscriptions[$uid][$type][$object->$key] = $user_subscriptions;
-  }
-  return $subscriptions[$uid][$type][$object->$key];
 }

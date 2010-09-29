@@ -9,12 +9,14 @@
  * Base class for Notifications fields
  */
 abstract class Notifications_Field {
+  // Subscription id
+  public $sid;
   // Field type
   public $type;
   // Value
   public $value;
   // Index for subscription
-  public $index;
+  public $position;
   // Object name
   public $name;
   // Object type
@@ -23,25 +25,27 @@ abstract class Notifications_Field {
   protected $object;
   // Data type
   protected $data_type = 'int';
-  // Subscription this field belongs to
+  // Subscription object this field belongs to
   protected $subscription;
+
   /**
    * Constructor
    */
-  public function __construct($value = NULL, $index = NULL) {
-    $this->value = $value;
-    $this->index = $index;
+  public function __construct($template = array()) {
+    foreach ((array)$template as $field => $value) {
+      $this->$field = $value
+    }
   }
   /**
    * Build field instance
    */
-  public static function build_type($type, $value, $index = NULL) {
+  public static function build_type($type, $template = NULL) {
     if ($class = notifications_field_type($type, 'class')) {
-      return new $class($type, $value, $index);
+      return new $class($template);
     }
     else {
       // Unknown field type, let's build something
-      $field = new Notifications_Field_Default($value, $index);
+      $field = new Notifications_Field_Default($template);
       $field->type = $type;
       return $field;
     }
@@ -50,7 +54,7 @@ abstract class Notifications_Field {
    * Build from db object
    */
   public static function build_object($object) {
-    return self::build_type($object->type, $object->value, $object->index);
+    return self::build_type($object->type, $object);
   }
   /**
    * Get field value name, plain text
@@ -382,220 +386,3 @@ class Notifications_User_Field extends Notifications_Field_Autocomplete {
     return messaging_user_format_name($this->value);
   }
 }
-
-/**
- * Reverse mapping from node title to nid
- * 
- * We also handle autocomplete values (title [nid:x]) and validate the form
- */
-function notifications_node_title2nid($name, $field = NULL, $types = array()) {
-  if (!empty($name)) {
-    preg_match('/^(?:\s*|(.*) )?\[\s*nid\s*:\s*(\d+)\s*\]$/', $name, $matches);
-    if (!empty($matches)) {
-      // Explicit [nid:n].
-      list(, $title, $nid) = $matches;
-      if (!empty($title) && ($node = node_load($nid)) && $title != $node->title) {
-        if ($field) {
-          form_set_error($field, t('Node title mismatch. Please check your selection.'));
-        }
-        $nid = NULL;
-      }
-    }
-    else {
-      // No explicit nid.
-      $reference = _notifications_node_references($name, 'equals', $types, 1);
-      if (!empty($reference)) {
-        $nid = key($reference);
-      }
-      elseif ($field) {
-        form_set_error($field, t('Found no valid post with that title: %title', array('%title' => $name)));
-      }
-    }
-  }
-  return !empty($nid) ? $nid : NULL;  
-}
-
-/**
- * Find node title matches.
- * 
- * Some code from CCK's nodereference.module
- */
-function _notifications_node_references($string, $match = 'contains', $types = array(), $limit = 10) {
-  $match_operators = array(
-    'contains' => "LIKE '%%%s%%'",
-    'equals' => "= '%s'",
-    'starts_with' => "LIKE '%s%%'",
-  );
-  if ($types) {
-    $where[] = 'n.type IN (' . db_placeholders($types, 'char') . ') ';
-    $args = $types;
-  }
-  $where[] = 'n.title '. (isset($match_operators[$match]) ? $match_operators[$match] : $match_operators['contains']);
-  $args[] = $string;
-  $sql = db_rewrite_sql('SELECT n.nid, n.title, n.type FROM {node} n WHERE ' . implode(' AND ', $where) . ' ORDER BY n.title, n.type');
-  $result = db_query_range($sql, $args, 0, $limit) ;
-  $references = array();
-  while ($node = db_fetch_object($result)) {
-    $references[$node->nid] = array(
-      'title' => $node->title,
-      'rendered' => check_plain($node->title),
-    );
-  }
-  return $references; 
-}
-
-/**
- * Get full info array for field type that has the property.
- * 
- * It will return the info array for the field it it has the property or the info for the object type
- * 
- * @param $type
- *   Field type
- * @param $property
- *   Property we are looking for
- *   
- * @return array()
- *   Info array from field or from object type
- */
-function notifications_field_get_info($type, $property) {
-  if ($info = notifications_field_type($type)) {
-    if (isset($info[$property])) {
-      return $info;
-    }
-    elseif (!empty($info['object_type']) && notifications_object_type($info['object_type'], $property)) {
-      return notifications_object_type($info['object_type']);
-    }
-  }
-}
-
-/**
- * Format field type name
- */
-function notifications_field_format_name($type) {
-  $name = notifications_field_type($type, 'name');
-  return $name ? $name : t('Unknown');
-}
-
-/**
- * Format field value
- * 
- * @param $type
- *   Field type
- * @param $value
- *   Field value
- * @param $html
- *   Whether to format the field as HTML (if FALSE will return plaintext format)
- * @param $subscription
- *   Subscription instance or template for which we want to format this field
- */
-function notifications_field_format_value($type, $value, $html = TRUE, $subscription = NULL) {
-  if ($format_info = notifications_field_get_info($type, 'format callback')) {
-    $format_value = _notifications_info_callback($format_info, 'format callback', array($value, $html));
-  }
-  elseif ($options = notifications_field_subscription_options($type)) {
-    // If not we try options callback, we can get the name from the array of options
-    $format_value = isset($options[$value]) ? $options[$value] : t('Not available');
-  }
-
-  // If nothing got, we return the value
-  if (!isset($format_value)) {
-    $format_value = check_plain($value);
-  }
-  return $format_value;
-}
-
-/**
- * Collect submitted fields and parse new values
- */
-function notifications_field_parse_submitted(&$form_state, $element_name = 'fields') {
-  $fields = array();
-  if (!empty($form_state['values'][$element_name]['type'])) {
-    $field_values = &$form_state['values'][$element_name];
-    foreach ($field_values['type'] as $key => $type) { 
-      // If marked for deletion we just keep it there, don't return field
-      if (empty($field_values['delete'][$key])) {
-        // First collect all field values from the form   
-        $field = array('type' => $type, 'value' => $field_values['value'][$key], 'edit' => $field_values['edit'][$key]);  
-        // Complete field edit value, depending on field definition.
-        if (empty($field_values['parsed'][$key])) {
-          $value = notifications_field_real_value($type, $field['edit']);
-          if (isset($value)) {
-            $field['value'] = $value;
-            $field_values['value'][$key] = $value;
-            $field['parsed'] = TRUE;
-            $field_values['parsed'][$key] = TRUE;
-          }
-          // Otherwise we let the field keep its value
-        }
-        // Add field to the list and mark as formatted so we can use this value for the form
-        $fields[] = $field;
-      }
-    }
-    
-  }
-  return $fields;
-}
-
-/**
- * Validate submitted field values and set the new ones as valid array of values
- */
-function notifications_field_validate_submitted(&$form_state, $element_name = 'fields', $require_one = TRUE, $require_all = TRUE) {
-  $checked_values = array();
-  if ($field_values = notifications_field_parse_submitted($form_state, $element_name)) {
-    foreach ($field_values as $key => $field) {
-      $string_id = "$element_name][edit][$key";
-      // We validate the field, type included
-      if (notifications_field_valid_value($field['edit'])) {
-        if (empty($field['parsed']) || !notifications_field_valid_value($field['value'], $field['type'])) {
-          form_set_error($string_id, t('The value for this field is not valid.'));
-          continue;
-        }
-      }
-      elseif ($require_all) {
-        form_set_error($string_id, t('You must set a value for this field.'));
-        continue;
-      }
-      $checked_values[] = array('type' => $field['type'], 'value' => $field['value']);
-    }
-  }
-  elseif ($require_one) {
-    form_set_error(NULL, t('You must set at least one field for this subscription type.'));
-  }
-  return $checked_values;
-}
-
-/**
- * Convert field value from submission into its real value
- */
-function notifications_field_real_value($type, $value) {  
-  if (!notifications_field_valid_value($value)) {
-    return NULL;
-  }
-  elseif ($info = notifications_field_get_info($type, 'value callback')) {
-    // We have a value callback for field or object so use it
-    return _notifications_info_callback($info, 'value callback', array($value));
-  }
-  else {
-    // As we have nothing better, return the value itself
-    return $value;
-  }
-}
-
-
-/**
- * Get options for fields with options callback, may depend on subscription type
- * 
- * - First tries 'subscription_type options callback'
- * - If not found try generic 'options callback'
- */
-function notifications_field_subscription_options($type, $subscription = NULL) {
-  // First try specific options for this subscription type if any
-  if ($subscription && ($info = notifications_field_get_info($type, "$subscription->type options callback"))) {
-    return _notifications_info_callback($info, "$subscription->type options callback", array($subscription));
-  }
-  elseif ($info = notifications_field_get_info($type, 'options callback')) {
-    return _notifications_info_callback($info, 'options callback', array($subscription));
-  }
-}
-
-

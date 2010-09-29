@@ -70,9 +70,13 @@ function notifications_schema() {
         'description' => 'The {notifications_subscription}.sid, subscription this condition belongs to.',
         'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'
       ),
-      'field' => array(
+      'type' => array(
         'description' => 'The field type for this condition, will depend on subscription type and defined fields.',
         'type' => 'varchar', 'length' => '255', 'not null' => TRUE
+      ),
+      'position' => array(
+        'description' => 'Position of this field in this subscription',
+        'type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
       ),
       'value' => array(
         'description' => 'Matching value for the field, just for string values',
