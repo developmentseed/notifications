@@ -20,7 +20,7 @@ function notifications_user_menu() {
     'page arguments' => array('notifications_user_overview', 1),
     'access callback' => 'notifications_user_access',
     'access arguments' => array(1),
-    'file' => 'notifications.pages.inc',
+    'file' => 'notifications_user.pages.inc',
   );
   $items['user/%user/notifications/overview'] = array(
     'type' => MENU_DEFAULT_LOCAL_TASK,
@@ -31,10 +31,10 @@ function notifications_user_menu() {
     'type' => MENU_LOCAL_TASK,
     'title' => 'Subscriptions',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_manage_user_subscriptions', 1),
+    'page arguments' => array('notifications_user_manage_subscriptions', 1),
     'access callback' => 'notifications_user_access',
     'access arguments' => array(1, 'manage'),
-    'file' => 'notifications.manage.inc',
+    'file' => 'notifications_user.pages.inc',
   );
   // Edit subscription under subscriptions tab
   $items['user/%user/notifications/subscriptions/edit/%notifications_subscription'] = array(
@@ -44,14 +44,14 @@ function notifications_user_menu() {
     'page arguments' => array('notifications_subscription_edit_form', 5),
     'access callback' => 'notifications_subscription_access',
     'access arguments' => array('edit', 5),
-    'file' => 'notifications.pages.inc',
+    'file' => 'notifications_user.pages.inc',
   );
   // Delete subscription under subscriptions tab
   $items['user/%user/notifications/subscriptions/delete/%notifications_subscription'] = array(
     'type' => MENU_LOCAL_TASK,
     'title' => 'Delete subscription',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_form_unsubscribe_confirm', 5),
+    'page arguments' => array('notifications_user_form_unsubscribe_confirm', 5),
     'access callback' => 'notifications_subscription_access',
     'access arguments' => array('unsubscribe', 5),
     'file' => 'notifications.pages.inc',
@@ -60,10 +60,10 @@ function notifications_user_menu() {
     'type' => MENU_CALLBACK,
     'title' => 'Update subscriptions',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_update_user_subscriptions', 1, 4),
+    'page arguments' => array('notifications_user_update_subscriptions', 1, 4),
     'access callback' => 'notifications_user_access',
     'access arguments' => array(1, 'maintain'),
-    'file' => 'notifications.pages.inc',
+    'file' => 'notifications_user.pages.inc',
   );  
   return $items;
 }
@@ -98,5 +98,117 @@ function notifications_user_access($account, $op = 'maintain') {
   else {
     return $account->uid && $user->uid == $account->uid &&
       (($op == 'maintain' && user_access('maintain own subscriptions')) || ($op == 'manage' && user_access('manage own subscriptions')));
+  }
+}
+
+/**
+ * Implementation of hook_forms()
+ */
+function notifications_user_forms() {
+  $forms['notifications_user_subscription_add_form']['callback'] = 'notifications_user_subscription_form';
+  $forms['notifications_user_subscription_edit_form']['callback'] = 'notifications_user_subscription_form';
+  $forms['notifications_user_subscription_confirm_form']['callback'] = 'notifications_user_subscription_form';
+  return $forms;
+}
+
+
+/**
+ * Main Subscription form builder
+ */
+function notifications_subscription_form(&$form_state, $subscription, $destination_path = '') {
+  module_load_include('pages.inc', 'notifications');
+  return notifications_subscription_base_form($form_state, $subscription, $destination_path);
+}
+
+/**
+ * Main subscription form validate
+ */
+function notifications_subscription_form_validate($form, &$form_state) {
+  module_load_include('pages.inc', 'notifications');
+  return notifications_subscription_base_form_validate($form, $form_state);
+}
+
+/**
+ * Main subscriptions form submit
+ */
+function notifications_subscription_form_submit($form, &$form_state) {
+  module_load_include('pages.inc', 'notifications');
+  return notifications_subscription_base_form_submit($form, $form_state);
+}
+
+
+
+/**
+ * Form with multiple subscription options
+ */
+function notifications_subscriptions_options_form($form_state, $subscriptions, $account = NULL, $destination = NULL, $length = 40) {
+  $account = $account ? $account : $GLOBALS['user'];
+  notifications_include('object.inc');
+  $form = notifications_object_options_form($form_state, $subscriptions);
+  // If anonymous account, add destination subform
+  if (!$account->uid) {
+    $form = notifications_subscription_destination_subform($form, $account, $destination = NULL, NULL, $length);
+  }
+  return $form;
+}
+
+/**
+ * Subform with multiple subscription options
+ */
+function notifications_subscriptions_options_subform($subscriptions, $buttons = TRUE) {
+  notifications_include('object.inc');
+  return notifications_object_options_subform($subscriptions, $buttons);
+}
+/**
+ * Wrapper submit callback se we can do an include before actual submission
+ */
+function notifications_subscriptions_options_form_submit($form, &$form_state) {
+  notifications_include('object.inc');
+  return notifications_object_options_form_submit($form, $form_state);
+}
+
+/**
+ * Add destination subform
+ */
+function notifications_subscription_destination_subform($form, $account, $destination = NULL, $send_methods = NULL, $length = 40) {
+  notifications_include('destination.inc');
+  $form['send_method'] = notifications_destination_address_subform($account, $destination, $send_methods, $length);
+  // Add our validate and submit callbacks first
+  $form['#validate'] = array_merge(array('notifications_subscription_destination_subform_validate'), isset($form['#validate']) ? $form['#validate'] : array());
+  $form['#submit'] = array_merge(array('notifications_subscription_destination_subform_submit'), isset($form['#submit']) ? $form['#submit'] : array());
+  return $form;
+}
+
+/**
+ * Validate submitted destination
+ */
+function notifications_subscription_destination_subform_validate($form, &$form_state) {
+  notifications_include('destination.inc');
+  // Get destination from form and check it is ok for an anonymous user
+  $dest = notifications_destination_parse_submitted($form_state['values'], TRUE);
+  if (!empty($dest['method']) && !empty($dest['address'])) {
+    // Set destination field so we don't validate again send method later
+    $form_state['values']['destination'] = TRUE;
+    // Set send method in case we need some more validation for the subscription
+    $form_state['values']['send_method'] = $dest['method'];
+  }
+}
+
+/**
+ * Create submitted destination
+ */
+function notifications_subscription_destination_subform_submit($form, &$form_state) {
+  notifications_include('destination.inc');
+  // Get destination from form and add method / destination to form values
+  $dest = notifications_destination_parse_submitted($form_state['values'], FALSE);
+  if ($destination = Messaging_Destination::create($dest)) {
+    $form_state['values']['send_method'] = $dest['method'];
+    $form_state['values']['destination'] = $destination;
+    $form_state['values']['subscription_fields'][] = 'send_method';
+    $form_state['values']['subscription_fields'][] = 'destination';
+  }
+  else {
+    // We should have trapped this on validation. Just in case print an error message.
+    drupal_set_message(t('Cannot create a destination for this subscription.'), 'error');
   }
 }

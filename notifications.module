@@ -113,7 +113,7 @@ function notifications_menu() {
   );
 return $items;
   // Subscribe links. For this items access will be checked later in the page
-  $items['notifications/subscribe/%user'] = array(
+  $items['notifications/subscribe/%notifications_subscription_type'] = array(
     'type' => MENU_CALLBACK,
     'page callback' => 'notifications_page_subscribe',
     'page arguments' => array(2),
@@ -122,7 +122,7 @@ return $items;
     'file' => 'notifications.pages.inc',
   );
   // Unsubscribe links This page will need to work with anonymous users
-  $items['notifications/unsubscribe'] = array(
+  $items['notifications/unsubscribe/'] = array(
     'type' => t('Unsubscribe'),
     'page callback' => 'notifications_page_unsubscribe',
     'access callback' => TRUE,
@@ -198,40 +198,33 @@ function notifications_access_user_add($account = NULL, $type = NULL) {
 }
 
 /**
- * Check signature
- * 
- * @param $params
- *   Optional array of path elements. If not specified the current URL will be used
- * @param $query
- *   Query string array, will be taken from request if empty
- * @param $prefix
- *   When using the path this must match the first part of it, which is not used in the signature
+ * Check signature from URL and query string
  */
-function notifications_check_signature($params = NULL, $query = array(), $prefix = 'notifications') {
-  // If not parameters passed, get them from path, discard the first one that must match $prefix
-  if (!$params) {
-    if (arg(0) == $prefix) {
-      $params = arg();
-      array_shift($params);
-    }
-    $query = $query ? $query : $_GET;
-  }
-  // Check timestamp < 7 days
-  if (!empty($query['timestamp']) && time() - 24 * 7 * 3600 > (int)$query['timestamp']) {
-    drupal_set_message(t('This link has expired. Please get a new one or contact the site administrator.'), 'error');
-    return FALSE;
-  }
+function notifications_check_signature() {
   if (!empty($_GET['signature'])) {
+    $query = $_GET;
+    $signature = $query['signature'];
     unset($query['signature']);
-    unset($query['q']);
-    if ($_GET['signature'] === _notifications_signature($params, $query)) {
-      return TRUE;
+    unset($query['q']); // Trim out the path element
+    $path = current_path()
+    if ($signature === notifications_url_signature($path, $query)) {
+      // Now check timestamp, it should be < 7 days
+      if (!empty($query['timestamp']) && time() - 24 * 7 * 3600 > (int)$query['timestamp']) {
+        drupal_set_message(t('This link has expired. Please get a new one or contact the site administrator.'), 'error');
+        return FALSE;
+      }        
+      else {
+        // Signature is ok and timestamp is ok or we don't have one.
+        // (If you sign links that never expire, that's your problem.)
+        return TRUE;
+      }
     }
     else {
       drupal_set_message(t('This link is not valid anymore. Please get a new one or contact the site administrator.'), 'error');
       return FALSE;
     }
   }
+  // Return nothing, we didn't have any signature
 }
 
 /**
@@ -239,14 +232,18 @@ function notifications_check_signature($params = NULL, $query = array(), $prefix
  * 
  * More access checking depending on subscription type will be done at the destination page
  */
-function notifications_access_subscribe($account) {
-  global $user;
-  
-  if (!$account->uid && !$user->uid) return notifications_access_anonymous();
-  
-  if (user_access('administer notifications') || user_access('manage all subscriptions')) return TRUE;
-  
-  return $account && $account->uid && ($user->uid == $account->uid) && user_access('maintain own subscriptions');
+function notifications_access_subscribe($subscription, $account) {
+  if ($account && $subscription) {
+    if (notifications_check_signature()) {
+      return TRUE; // Signed link
+    }
+    elseif (user_access('administer notifications') || user_access('manage all subscriptions')) {
+      return TRUE;
+    }
+    else {
+      return ($GLOBALS['user']->uid == $account->uid) && $subscription->user_access($account);
+    }
+  }
 }
 
 /**
@@ -369,8 +366,7 @@ function notifications_cron() {
  *   Property to return
  */
 function notifications_event_type($typekey = NULL, $property = NULL, $default = NULL) {
-  $info = &notifications_info('event types');
-  return messaging_array_info($enabled, $typekey, $property);
+  return notifications_info('event types', $typekey, $property, $default);
 }
 
 /**
@@ -385,8 +381,7 @@ function notifications_event_type($typekey = NULL, $property = NULL, $default = 
  *   or information for a given field for all types
  */
 function notifications_object_type($type = NULL, $field = NULL, $default = NULL) {
-  $types = notifications_info('object types');
-  return messaging_array_info($types, $type, $field, $default);
+  return notifications_info('object types', $type, $field, $default);
 }
 
 /**
@@ -401,10 +396,15 @@ function notifications_object_type($type = NULL, $field = NULL, $default = NULL)
  *   String, a specific field to retrieve info from OPTIONAL
  */
 function notifications_subscription_type($type = NULL, $field = NULL, $default = NULL) {
-  $types = notifications_info('subscription types');
-  return messaging_array_info($types, $type, $field, $default);
+  return notifications_info('subscription types', $type, $field, $default);
 }
 
+/**
+ * Load subscription type for menu operations
+ */
+function notifications_subscription_type_load($type) {
+  return notifications_subscription($type);
+}
 /**
  * Get subscription types available for a user account
  */
@@ -529,16 +529,6 @@ function notifications_form_alter(&$form, $form_state, $form_id) {
 }
 
 /**
- * Implementation of hook_forms()
- */
-function notifications_forms() {
-  $forms['notifications_subscription_add_form']['callback'] = 'notifications_subscription_form';
-  $forms['notifications_subscription_edit_form']['callback'] = 'notifications_subscription_form';
-  $forms['notifications_subscription_confirm_form']['callback'] = 'notifications_subscription_form';
-  return $forms;
-}
-
-/**
  * Gets a user setting, defaults to default system setting for each
  * 
  * @param $name
@@ -595,7 +585,7 @@ function notifications_event_enabled($key, $default = TRUE) {
   $info = variable_get('notifications_event_enabled', array());
   $status = isset($info[$key]) ? $info[$key] : $default;
   // If this has a parent type, will be enabled just if parent is
-  if ($status && ($parent = notifications_event_types($key, 'parent'))) {
+  if ($status && ($parent = notifications_event_type($key, 'parent'))) {
     return notifications_event_enabled($parent, FALSE);
   }
   else {
@@ -728,23 +718,6 @@ function notifications_object($type, $value) {
       $cache[$type][$object->value] = $object;
     }
     return $object;
-  }
-}
-
-/**
- * Load an object of type defined by notifications 'object types'
- * 
- * @param $type
- *   Object type
- * @param $value
- *   Object key value, or the object itself
- */
-function notifications_object_load($type, $value) {
-  if (is_object($value)) {
-    return $value;
-  }
-  else {
-    return _notifications_object_callback($type, 'load callback', $value);
   }
 }
 
@@ -967,14 +940,15 @@ function notifications_build_method($send_interval = NULL, $refresh = FALSE) {
  * - The module name is added to each resulting array
  * - We cache all the results 
  */
-function &notifications_info($name, $param = NULL, $refresh = FALSE) {
-  $info = &drupal_static('notifications_info_' . $name);
-  if (!isset($info) || $refresh) {
-    $info = module_invoke_all('notifications', $name, $param);
+function notifications_info($name, $type = NULL, $property = NULL, $default = NULL) {
+  $_name = strtr($name, ' ', '_');
+  $info = &drupal_static('notifications_info_' . $_name);
+  if (!isset($info)) {
+    $info = module_invoke_all('notifications', $name);
     // Provide alter hook: notifications_name
-    drupal_alter('notifications_' . strtr($name, ' ', '_'), $info);
+    drupal_alter('notifications_' . $_name, $info);
   }      
-  return $info;
+  return messaging_array_info($info, $type, $property, $default);
 }
 
 /**
@@ -1079,4 +1053,72 @@ function notifications_theme() {
       'file' => 'notifications.pages.inc',
     ),
   );
+}
+
+/**
+ * Implementation of hook_forms()
+ */
+function notifications_forms($form_id, $args) {
+  $forms['notifications_subscription_add_form'] = array(
+    'callback' => 'notifications_subscription_form',
+    'callback arguments' => 'add',
+  );
+  $forms['notifications_subscription_edit_form'] = array(
+    'callback' => 'notifications_subscription_form',
+    'callback arguments' => 'edit',
+  );
+  $forms['notifications_subscription_confirm_form'] = array(
+    'callback' => 'notifications_subscription_form',
+    'callback arguments' => 'confirm',
+  );
+  return $forms;
+}
+
+/**
+ * Wrapper for l() function with some more options
+ */
+function notifications_l($text, $path, $options = array()) {
+  return l($text, $path, notifications_url_options($path, $options));
+}
+/**
+ * Wrapper for url() function with some more options
+ */
+function notifications_url($path, $options = array()) {
+  return url($path, notifications_url_options($path, $options));
+}
+
+/**
+ * Fill some url options
+ */
+/**
+ * Wrapper for url() function with some more options
+ */
+function notifications_url_options($path, $options = array()) {
+  $options += array(
+    'signed' => FALSE,
+    'query' => array(),
+  );
+  // If signed, add timestamp and signature
+  if ($options['signed']) {
+    $options['query'] += array('timestamp' => time());
+    $options['query']['signature'] = notifications_url_signature($path, $options['query']);
+  }
+  return $options;
+}
+
+/**
+ * Signature for url parameters
+ * 
+ * @param $path
+ *   Path or array with path elements
+ * @param $query
+ *   Query string elements
+ */
+function notifications_url_signature($path, $query = array()) {
+  $path = is_array($path) ? implode('/', $path) : $path;
+  if (isset($query['signature'])) {
+    unset($query['signature']);
+  }
+  $string = $query ? notifications_array_serialize($query) : 'none'; 
+  return md5('notifications' . drupal_get_private_key() .':' . $path . ':' . $string); 
 }

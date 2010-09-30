@@ -397,7 +397,7 @@ function theme_notifications_send_intervals_form($variables) {
 function notifications_admin_events_form() {
   $form = array();
   // Compile array from plug-ins and settings
-  if ($events = notifications_event_types()) {
+  if ($events = notifications_event_type()) {
     $form['notifications_event_enabled']['#tree'] = TRUE;
     $form['notifications_event_template']['#tree'] = TRUE;
     // Group event types when they have a parent

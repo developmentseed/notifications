@@ -6,24 +6,6 @@
  *   Common functions for bulk management of subscriptions
  */
 
-/**
- * Menu callback: user subscriptions management
- */
-function notifications_manage_user_subscriptions($form_state, $account) {
-  module_load_include('inc', 'notifications', 'notifications.pages');
-  if (isset($form_state['values']['operation']) && $form_state['values']['operation'] == 'delete') {
-    $form = notifications_multiple_delete_confirm($form_state, array_filter($form_state['values']['subscriptions']));
-    return $form;
-  }
-  $form = notifications_subscriptions_filter_form();
-  $form['filters']['#title'] = t('Filter');
-  // Display collapsed only when no filters set
-  $form['filters'] += array('#collapsible' => TRUE, '#collapsed' => empty($_SESSION['subscriptions_overview_filter']));
-  $form['#theme'] = 'notifications_subscriptions_filter_form';
-  $form['admin']  = notifications_manage_subscriptions_form($account);
-
-  return $form;
-}
 
 /**
  * Check access for current user to manage subscriptions

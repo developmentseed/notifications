@@ -55,7 +55,7 @@ function notifications_digest_get_templates($op = 'all') {
   }
   elseif ($op == 'enabled') {
      // Get a list of templates for enabled event types
-     $enabled_events = array_filter(notifications_event_types(NULL, NULL, FALSE));
+     $enabled_events = notifications_event_enabled_types());
      $enabled = array_map('notifications_digest_event_template', array_keys($enabled_events));
      return messaging_template_extract_group($enabled, $templates);
   }
@@ -137,13 +137,13 @@ function notifications_digest_event_template($event) {
   }  
   $key = is_object($event) ? $event->typekey : $event;
   if (!isset($info[$key])) {
-    if ($template = notifications_event_types($key, 'digest_template')) {
+    if ($template = notifications_event_type($key, 'digest_template')) {
       $info[$key] = $template;
     }
     else {
       $parts = array('notifications', 'digest');
       // Get digesting information from event definition
-      if ($digest = notifications_event_types($key, 'digest')) {
+      if ($digest = notifications_event_type($key, 'digest')) {
         // This will be an array like (node, nid) or (event, type)
         $parts = array_merge($parts, $digest);
       }

@@ -97,7 +97,7 @@ class Notifications_Event extends Notifications_Entity {
    * Get event type information
    */
   function get_type($property = NULL) {
-    if ($info = notifications_event_types($this->typekey)) {
+    if ($info = notifications_event_type($this->typekey)) {
       if ($property) {
         return isset($info[$property]) ? $info[$property] : NULL;
       }

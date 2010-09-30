@@ -61,17 +61,40 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * @return Notifications_Subscription_Type
    */
   public abstract function subscription_type();  
+
   /**
-   * Check whether this is a subscription type
+   * Check whether this is a subscription instance or a subscription type
    */
-  public function is_type() {
-    return FALSE;
+  public abstract function is_instance();
+  /**
+   * Check whether this is a stored subscription
+   */
+  public abstract function is_stored();
+  
+  /**
+   * Get subscribe / unsubscribe link for this
+   */
+  public abstract function get_subscription_link($options = array());
+  
+  /**
+   * Subscribe links are ok for instances and types
+   */
+  function get_subscribe_link($options = array()) {
+    $options += array('query' => array());
+    $options['query']['type'] = $this->type;
+    foreach ($this->filter_fields($this->get_fields()) as $field) {
+      $options['query'][$field->position] = $field->value;
+    }
+    return notifications_l($this->get_subscribe_text(), 'notifications/subscribe', $options);
   }
   /**
-   * Check whether this is a subscription instance
+   * Get subscribe / unsubscribe text for this
    */
-  public function is_instance() {
-    return FALSE;
+  public function get_subscribe_text() {
+    return t('Subscribe to @name', array('@name', $this->get_name()));
+  }
+  public function get_unsubscribe_text() {
+    return t('Unsubscribe from @name', array('@name', $this->get_name()));
   }
 
   /**
@@ -308,8 +331,11 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   /**
    * This is a subscription type
    */
-  public function is_type() {
-    return TRUE;
+  public function is_instance() {
+    return FALSE;
+  }
+  public function is_stored() {
+    return FALSE;
   }
   /**
    * Get subscription type object
@@ -331,7 +357,12 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   public function get_name() {
     return t('Subscription');
   }
-
+  /**
+   * Get subscription link
+   */
+  public function get_subscription_link($options = array()) {
+    return $this->get_subscribe_link();
+  }
   /**
    * User access function
    */
@@ -564,6 +595,25 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   public function is_stored() {
     return !empty($this->sid);
+  }
+
+  /**
+   * Get subscribe / unsubscribe link for this
+   */
+  public function get_subscription_link($options = array()) {
+    if ($this->is_stored()) {
+      return $this->get_unsubscribe_link();
+    }
+    else {
+      return $this->get_subscribe_link();
+    }
+  }
+  public function get_unsubscribe_link($options = array()) {
+    return notifications_l($this->get_unsubscribe_text(), 'notifications/unsubscribe/' . $this->sid, $options);
+  }
+  public function get_unsubscribe_url($options = array()) {
+    $options += array('signed' => TRUE, 'absolute' => TRUE);
+    return notifications_url('notifications/unsubscribe/' . $this->sid, $options);
   }
   /**
    * User access function
