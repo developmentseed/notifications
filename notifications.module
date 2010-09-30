@@ -122,6 +122,7 @@ return $items;
     'file' => 'notifications.pages.inc',
   );
   // Unsubscribe links This page will need to work with anonymous users
+  // The parameter will be a list of sids, separated by commas
   $items['notifications/unsubscribe/'] = array(
     'type' => t('Unsubscribe'),
     'page callback' => 'notifications_page_unsubscribe',
@@ -154,9 +155,26 @@ return $items;
     'type' => MENU_CALLBACK,
     'file' => 'includes/node.inc',
   );
-
-
   return $items;
+}
+
+/**
+ * Menu access callback for subscribe links
+ * 
+ * More access checking depending on subscription type will be done at the destination page
+ */
+function notifications_access_subscribe($subscription, $account) {
+  if ($account && $subscription) {
+    if (notifications_check_signature()) {
+      return TRUE; // Signed link
+    }
+    elseif (user_access('administer notifications') || user_access('manage all subscriptions')) {
+      return TRUE;
+    }
+    else {
+      return ($GLOBALS['user']->uid == $account->uid) && $subscription->user_access($account);
+    }
+  }
 }
 
 /**
@@ -206,7 +224,7 @@ function notifications_check_signature() {
     $signature = $query['signature'];
     unset($query['signature']);
     unset($query['q']); // Trim out the path element
-    $path = current_path()
+    $path = current_path();
     if ($signature === notifications_url_signature($path, $query)) {
       // Now check timestamp, it should be < 7 days
       if (!empty($query['timestamp']) && time() - 24 * 7 * 3600 > (int)$query['timestamp']) {
@@ -227,24 +245,6 @@ function notifications_check_signature() {
   // Return nothing, we didn't have any signature
 }
 
-/**
- * Menu access callback for subscribe links
- * 
- * More access checking depending on subscription type will be done at the destination page
- */
-function notifications_access_subscribe($subscription, $account) {
-  if ($account && $subscription) {
-    if (notifications_check_signature()) {
-      return TRUE; // Signed link
-    }
-    elseif (user_access('administer notifications') || user_access('manage all subscriptions')) {
-      return TRUE;
-    }
-    else {
-      return ($GLOBALS['user']->uid == $account->uid) && $subscription->user_access($account);
-    }
-  }
-}
 
 /**
  * Check access for anonymous subscriptions
@@ -406,14 +406,15 @@ function notifications_subscription_type_load($type) {
   return notifications_subscription($type);
 }
 /**
- * Get subscription types available for a user account
+ * Get subscription type objects available for a user or current user
  */
 function notifications_subscription_user_types($account = NULL) {
   $account = $account ? $account : $GLOBALS['user'];
   $types = array();
   foreach (notifications_subscription_enabled_types() as $type => $info) {
-    if (notifications_subscription($type)->user_access($account)) {
-      $types[$type] = $info;
+    $subscription = notifications_subscription($type);
+    if ($subscription->user_access($account)) {
+      $types[$type] = $subscription;
     }
   }
   return $types;
@@ -952,6 +953,39 @@ function notifications_info($name, $type = NULL, $property = NULL, $default = NU
 }
 
 /**
+ * Get a option value for a given type from multiple variables
+ */
+function notifications_get_option($name, $type = NULL, $default = NULL) {
+  $options = &drupal_static('notifications_options');
+  if (!isset($options[$name])) {
+    $options[$name] = variable_get('notifications_option_' . $name, array());
+  }
+  if ($type) {
+    return isset($options[$name][$type]) ? $options[$name][$type] : $default;
+  }
+  else {
+    return $options[$name];
+  }
+}
+
+/**
+ * Set an option value for a given type for multiple variables
+ * 
+ * If no type (NULL), set the full array
+ */
+function notifications_set_option($name, $type, $value) {
+  notifications_get_option($name);
+  $options = &drupal_static('notifications_options');
+  if ($type) {
+    $options[$name][$type] = $value;
+  }
+  else {
+    $options[$name] = $value;
+  } 
+  variable_set('notifications_option_' . $name, $options[$name]);
+}
+
+/**
  * Entry point for the storage and queueing API
  * 
  * Default methods are implemented by Notifications_Queue class
@@ -1075,6 +1109,25 @@ function notifications_forms($form_id, $args) {
 }
 
 /**
+ * Subscription form ('add', 'edit', 'confirm')
+ */
+function notifications_subscription_form($form, &$form_state, $op, $subscription) {
+  return $subscription->get_form($op, $form, $form_state);
+}
+/**
+ * Validate form submission
+ */
+function notifications_subscription_form_validate($form, &$form_state) {
+  return Notifications_Subscription::build_from_submission($form, $form_state)->form_validate($form, $form_state);
+}
+/**
+ * Process form submission
+ */
+function notifications_subscription_form_submit($form, &$form_state) {
+  return Notifications_Subscription::build_from_submission($form, $form_state)->form_submit($form, $form_state);
+}
+
+/**
  * Wrapper for l() function with some more options
  */
 function notifications_l($text, $path, $options = array()) {
@@ -1095,12 +1148,17 @@ function notifications_url($path, $options = array()) {
  */
 function notifications_url_options($path, $options = array()) {
   $options += array(
-    'signed' => FALSE,
+    'skip_confirmation' => FALSE,
     'query' => array(),
   );
-  // If signed, add timestamp and signature
+  // If skip confirmation, links need to be signed
+  $options += array('signed' => $options['skip_confirmation']);
+  // If signed, add timestamp and signature, and maybe skip confirmation
   if ($options['signed']) {
-    $options['query'] += array('timestamp' => time());
+    $options['query'] += array('timestamp' => REQUEST_TIME);
+    if ($options['skip_confirmation']) {
+      $options['query']['skip'] = 1;
+    }
     $options['query']['signature'] = notifications_url_signature($path, $options['query']);
   }
   return $options;

@@ -300,10 +300,10 @@ function notifications_object_options_form_submit($form, $form_state) {
  */
 function notifications_subscription_get_link($op, $subscription, $options = array()) {
   $options += array('destination' => $_GET['q']);
-  if ($op == 'subscribe' && variable_get('notifications_ui_subscribe_links', 0)) {
+  if ($op == 'subscribe' && variable_get('notifications_option_subscribe_links', 0)) {
     $options += array('signed' => TRUE, 'confirm' => FALSE);
   }
-  if ($op == 'unsubscribe' && variable_get('notifications_ui_unsubscribe_links', 0)) {
+  if ($op == 'unsubscribe' && variable_get('notifications_option_unsubscribe_links', 0)) {
     $options += array('signed' => TRUE, 'confirm' => FALSE);
   } 
   return notifications_build_link($op, $options, 'subscription', $subscription);

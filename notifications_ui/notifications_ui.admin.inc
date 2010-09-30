@@ -39,7 +39,7 @@ function notifications_ui_settings_form() {
   $form['notifications_ui_types'] = array(
     '#type' => 'checkboxes',
     '#title' => t('Visible subscription types'),
-    '#options' => array_map('notifications_format_title_description', notifications_ui_subscription_types()),
+    '#options' => array_map('notifications_format_title_description', notifications_subscription_enabled_types()),
     '#default_value' => variable_get('notifications_ui_types', array('thread', 'nodetype', 'author')),
     '#description' => t('Check the subscription types the UI module should show. If not checked no options for this subscription type will be displayed at all.'),
   );
@@ -97,7 +97,7 @@ function notifications_ui_settings_form() {
 /**
  * Format subscription type settings
  */
-function theme_notifications_ui_subscription_types(&$elements) {
+function theme_notifications_subscription_enabled_types(&$elements) {
   $output = '';
   $header = array('', t('Enabled'), t('Show user account page'), t('Show create subscription page'));
   $rows = array();

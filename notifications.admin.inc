@@ -308,17 +308,17 @@ function notifications_admin_subscriptions_settings() {
     t('<strong>Confirmation form</strong>. Links take the user through a confirmation form with some more options.'),
     t('<strong>Direct operation</strong>. Links create/delete a subscription without confirmation using default settings.'),
   );
-  $form['links']['notifications_ui_subscribe_links'] = array(
+  $form['links']['notifications_option_subscribe_links'] = array(
     '#title' => t('Subscribe links'),
     '#type' => 'radios',
     '#options' => $options,
-    '#default_value' => variable_get('notifications_ui_subscribe_links', 0),
+    '#default_value' => variable_get('notifications_option_subscribe_links', 0),
   );
-  $form['links']['notifications_ui_unsubscribe_links'] = array(
+  $form['links']['notifications_option_unsubscribe_links'] = array(
     '#title' => t('Unsubscribe links'),
     '#type' => 'radios',
     '#options' => $options,
-    '#default_value' => variable_get('notifications_ui_unsubscribe_links', 0),
+    '#default_value' => variable_get('notifications_option_unsubscribe_links', 0),
   );
 
   $form = system_settings_form($form);
@@ -330,6 +330,8 @@ function notifications_admin_subscriptions_settings() {
 
 /**
  * Subscription settings submit, disable all subscriptions not allowed
+ * 
+ * @todo d7update
  */
 function notifications_admin_subscriptions_settings_submit($form, &$form_state) {
   // Submission may have been Save or Reset to defaults, so we cannot really trust submitted values
@@ -338,7 +340,7 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
   $types = notifications_subscription_type_enabled();
   $sql_update = 'UPDATE {notifications_subscription} SET status = %d WHERE status = %d';
   $enabled = $disabled = 0;
-
+/*
   if ($types) {
     // Enable subscriptions of these types that were disabled before
     $placeholders = db_placeholders($types, 'varchar');
@@ -365,6 +367,7 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
     // Delete rows from queue and do some clean up.
     notifications_queue()->queue_clean(FALSE);
   }
+*/
 }
 
 /**

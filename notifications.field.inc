@@ -138,6 +138,48 @@ abstract class Notifications_Field {
   }
 
   /**
+   * Set value for this field, update related properties
+   */
+  function set_value($value, $validate = FALSE) {
+    if (!$validate || $this->valid_value($value)) {
+      $this->value = $value;
+      $this->name = NULL;
+      $this->object = NULL;
+      return TRUE;
+    }
+    else {
+      return FALSE;
+    }
+  }
+  /**
+   * Build a field object from submitted values
+   */
+  public static function build_from_value($data, $type = NULL, $index = NULL) {
+    if (is_object($data)) {
+      if (!$type || $data->type == $type) {
+        $field = $data;
+      }
+    }
+    elseif (is_array($data)) {
+      if (isset($data['type']) && (!$type || $type == $data['type'])) {
+        $field = self::build_type($data['type']))) {
+        if (isset($data['value'])) {
+          $value = $field->parse_value($data['value']);
+          $field->set_value($value, TRUE); // Set value with previous validation
+        }
+      }
+    }
+    elseif ($type) {
+      $field = self::build_type($type);
+      $value = $field->parse_value($data);
+      $field->set_value($value, TRUE); // Set value with previous validation
+    }
+    if (!empty($field)) {
+      $field->position = $index;
+      return $field;
+    }
+  }
+  /**
    * Set subscription 
    */
   function set_subscription($subscription) {
@@ -145,10 +187,29 @@ abstract class Notifications_Field {
     $this->sid = !empty($subscription->sid) ? $subscription->sid : NULL;
   }
   /**
-   * Check if the field has a valid value
+   * Check if the field has a valid value or the parameter is a valid value
    */
-  function valid_value() {
-    return $this->validate_value($this->value, $this->data_type);
+  function check_value() {
+    return isset($this->value) ? $this->valid_value($this->value) : FALSE;
+  }
+  /**
+   * Parse value from form submission
+   */
+  function parse_value($value) {
+    switch($this->data_type) {
+      case 'int':
+        return (int)$value;
+      case 'float':
+        return (float)$value;
+      case 'string':
+        return (string)$value;  
+    }
+  }
+  /**
+   * Check if this is a valid value for this field/**
+   */
+  function valid_value($value = NULL) {
+    return $this->validate_value($value, $this->data_type);
   }
 
   /**
@@ -186,7 +247,7 @@ abstract class Notifications_Field {
       // The field has no value at all, no go
       return FALSE;
     }
-    elseif ($field_type) {
+    elseif ($data_type) {
       // We want aditional field type validation
       switch ($data_type) {
         case 'int':
@@ -209,16 +270,25 @@ abstract class Notifications_Field {
    * 
    * Was: notifications_field_form_element($type, $value, $subscription = NULL, $title = FALSE, $required = FALSE, $size = 40)
    */
-  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
-    $element = array(
+  function element_edit($element = array()) {
+    $element += array(
+      '#title' => $this->get_title(),
       '#type' => 'textfield',
       '#default_value' => isset($this->value) ? $this->value : NULL,
-      '#required' => $required,
+      '#required' => TRUE,
       '#size' => 40,
     );
-    if ($title) {
-      $element['#title'] = $this->get_title();
-    }
+    return $element;
+  }
+  /**
+   * Build a form element to display this field
+   */
+  function element_info($element = array()) {
+    $element += array(
+      '#type' => 'item',
+      '#title' => $this->get_title(),
+      '#markup' => check_plain($this->get_name()),
+    );
     return $element;
   }
   /**
@@ -265,6 +335,17 @@ abstract class Notifications_Field_Autocomplete extends Notifications_Field {
    */
   public abstract function autocomplete_path();
 
+  /**
+   * Parsing values may be different for these ones
+   */
+  function parse_value($value) {
+    is (is_string($value) && ($parsed = $this->autocomplete_parse($value))) {
+      return $parsed;
+    }
+    else {
+      return parent::parse_value($value);
+    }
+  }
   /**
    * Build a form element to edit this field
    */

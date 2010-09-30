@@ -64,7 +64,7 @@ function notifications_user_menu() {
     'access callback' => 'notifications_user_access',
     'access arguments' => array(1, 'maintain'),
     'file' => 'notifications_user.pages.inc',
-  );  
+  );
   return $items;
 }
 

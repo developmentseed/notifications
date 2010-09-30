@@ -25,7 +25,7 @@ function notifications_ui_help($path, $arg) {
  * Implementation of hook_menu()
  */
 function notifications_ui_menu() {
-  $items['admin/config/messaging/notifications/subscriptions/ui'] = array(
+  $items['admin/config/notifications/subscriptions/ui'] = array(
     'title' => 'User interface',
     'description' => 'Enables site settings for user subscriptions.',
     'page callback' => 'drupal_get_form',
@@ -36,40 +36,40 @@ function notifications_ui_menu() {
   );
   // Add single subscription page
   $items['user/%user/notifications/add'] = array(
-    'type' => MENU_LOCAL_TASK,
     'title' => 'Add subscription',
     'page callback' => 'notifications_ui_page_user_add',
     'page arguments' => array(1),
     'access callback' => 'notifications_ui_access_user_add',
-    'access arguments' => array(1, 4),
+    'access arguments' => array(1),
     'file' => 'notifications_ui.pages.inc',
     'weight' => 100,
   );
-  return $items;
-}
-
-/**
- * Implementation of hook_menu_alter()
- */
-function notifications_ui_menu_alter(&$items) {
-  foreach (notifications_subscription_type() as $type => $info) {
-    if (!empty($info['user page'])) {
-      $items[$info['user page']]['access callback'] = 'notifications_ui_access_page';
-      $items[$info['user page']]['access arguments'] = array($type, 1);
-    }
+  // Add link for each  subscription type
+  foreach (notifications_subscription_enabled_types() as $type => $info) {
+    $items['user/%user/notifications/add/' . $type] = array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => check_plain($info['title']),
+      'page callback' => 'notifications_ui_page_user_add',
+      'page arguments' => array(1, 4),
+      'access callback' => 'notifications_ui_access_user_add',
+      'access arguments' => array(1, 4),
+      'file' => 'notifications_ui.pages.inc',
+      'weight' => 100,
+    );  
   }
+  return $items;
 }
 
 /**
  * Menu access callback: add subscription
  */
 function notifications_ui_access_user_add($account, $type = NULL) {
-  // Main tab, visible only if any subscription type enabled
-  $check_types = $type ? array($type) : array_keys(notifications_ui_subscription_types());
-  foreach ($check_types as $type) {
-    if (notifications_ui_type_enabled($type) && notifications_ui_user_options('create') && notifications_access_user_add($account, $type)) {
-      return TRUE;
-    }
+  if ($type) {
+    return notifications_subscription($type)->user_access($account);
+  }
+  else {
+    // Overview page, visible if user has access to some subscription types
+    return (bool)notifications_subscription_user_types($account);
   }
 }
 
@@ -125,25 +125,6 @@ function notifications_ui_type_enabled($type) {
 }
 
 /**
- * Get info about subscription types, exclude custom types
- *
- * @see notifications_subscription_type()
- */
-function notifications_ui_subscription_types($type = NULL, $field = NULL) {
-  static $types;
-  
-  if (!isset($types)) {
-    $types = notifications_subscription_type();
-    // Filter out disabled types
-    $types = array_intersect_key($types, notifications_subscription_type_enabled());
-    // Filter out custom subscriptions
-    $types = notifications_array_filter($types, array('custom' => TRUE), TRUE);
-  }
-  
-  return messaging_array_info($types, $type, $field);
-}
-
-/**
  * Implementation of hook_forms()
  */
 function notifications_ui_forms($form_id) {
@@ -194,7 +175,7 @@ function notifications_ui_form_alter(&$form, $form_state, $form_id) {
     case 'notifications_user_overview':
       // Create new subscription
       $account = $form['account']['#value'];
-      foreach (notifications_ui_subscription_types() as $key => $type) {
+      foreach (notifications_subscription_enabled_types() as $key => $type) {
         if (notifications_ui_type_enabled($key) && notifications_ui_user_options('create') && notifications_access_user_add($account, $key)) {
           $create[] = l($type['title'], "user/$account->uid/notifications/add/$key");
         }
@@ -243,7 +224,7 @@ function notifications_ui_link($type, $node = NULL, $teaser = FALSE) {
     !$teaser && notifications_ui_node_options($node->type, 'links')
   )) {
     // Now we have the array of allowed options ready, build single links 
-    return notifications_ui_subscribe_links('node', $node);
+    return notifications_option_subscribe_links('node', $node);
   }
 }
 
@@ -257,7 +238,7 @@ function notifications_ui_link($type, $node = NULL, $teaser = FALSE) {
  * @param $prefix
  *   Prefix to use for the link indexes
  */
-function notifications_ui_subscribe_links($type, $object) {
+function notifications_option_subscribe_links($type, $object) {
   if (notifications_ui_user_access()) {
     notifications_include('object.inc');
     return notifications_object_subscribe_links($type, $object);
@@ -429,7 +410,7 @@ function notifications_ui_display_options($type, $check_option = NULL, $object =
 function notifications_ui_user($op, &$edit, &$account, $category = NULL) {
   if ($op == 'view' ) {
     // Add plain links if enabled
-    if (notifications_ui_display_options('account', 'links') && ($links = notifications_ui_subscribe_links('user', $account))) {
+    if (notifications_ui_display_options('account', 'links') && ($links = notifications_option_subscribe_links('user', $account))) {
       $account->content['summary']['notifications'] =  array(
         '#type' => 'user_profile_item',
         '#title' => t('Subscriptions'),

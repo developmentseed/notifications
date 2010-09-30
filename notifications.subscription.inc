@@ -80,12 +80,12 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Subscribe links are ok for instances and types
    */
   function get_subscribe_link($options = array()) {
+    $options += array('skip_confirmation' => variable_get('notifications_option_subscribe_links', 0));
     $options += array('query' => array());
-    $options['query']['type'] = $this->type;
     foreach ($this->filter_fields($this->get_fields()) as $field) {
       $options['query'][$field->position] = $field->value;
     }
-    return notifications_l($this->get_subscribe_text(), 'notifications/subscribe', $options);
+    return notifications_l($this->get_subscribe_text(), 'notifications/subscribe/' . $this->type, $options);
   }
   /**
    * Get subscribe / unsubscribe text for this
@@ -102,19 +102,6 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   public static function type_info($type = NULL, $property = NULL, $default = NULL) {
     return notifications_subscription_type($type, $property, $default);
-  }
-
-  /**
-   * Build from form submission
-   */
-  public static function build_submission(&$form_state) {
-    // The object may be already created ir it may be an array so we use this function that handles that
-    $subscription = notifications_build_subscription($form_state['values']['subscription']);
-    // There may be optional fields to add
-    if (!empty($form_state['values']['subscription_fields'])) {
-      $subscription->set_properties($form_state['values'], array_unique($form_state['values']['subscription_fields']));
-    }
-    return $subscription;
   }
   
   /**
@@ -155,7 +142,219 @@ abstract class Notifications_Subscription extends Notifications_Entity {
       }
     }
   }
- 
+  
+  /**
+   * Validate form
+   */
+  public function form_validate($form, &$form_state) {
+    $this->set_properties_from_submission($form, &$form_state);
+    return $subscription->validate_submission($form, &$form_state);
+  }
+  /**
+   * Process form submission
+   */
+  public function form_submit($form, &$form_state) {
+    $this->set_properties_from_submission($form, &$form_state);
+    if ($operation = $form_state['values']['operation']) {
+      return $subscription->form_operation($operation, $form, $form_state);
+    }
+    else {
+      return $this;
+    }
+  }
+  
+  /**
+   * Get form for this subscription
+   */
+  public function get_form($operation, $form, $form_state) {
+    $form['subscription'] = array('#type' => 'value', '#value' => $this);
+    $form['operation'] = array('#type' => 'value', '#value' => $operation);
+    $form['subscription_info'] = $this->element_info();
+    $form['send_method'] = $this->element_send_method();
+    $form['send_interval'] = $this->element_send_interval();
+    if ($fields = $this->get_editable_fields()) {
+      $form['subscription_fields'] = $this->element_fields_edit($fields);
+    }
+    $form['controls'] = $this->element_operation($operation);
+    return $form;
+  }
+  
+  /**
+   * Get subscription form info element
+   */
+  public function element_info() {
+    $elements = array(
+      '#type' => 'fieldset'
+      '#title' => $this->get_title(),
+    );
+    $elements['name']['#markup'] = $this->get_name();
+    $elements['description']['#markup'] = $this->get_description();
+    // We may have fixed fields or not
+    if ($fields = $this->get_type_fields()) {
+      $elements['fields'] = $this->element_fields_info($fields);
+    }
+    return $elements;
+  }
+
+  public function element_send_method() {
+    $element = array();
+    $send_methods = notifications_send_methods($this->get_user());
+    if (count($send_methods) > 1) {
+      $element = array(
+        '#title' => t('Send method'),
+        '#type' => 'options',
+        '#options' => $send_methods,
+        '#default_value' => $this->send_method,
+      );
+    }
+    return $element;    
+  }
+  public function element_send_interval() {
+    $send_methods = notifications_send_intervals($this->get_user());
+    $element = array();
+    if (count($send_intervals) > 1) {
+      $element = array(
+        '#title' => t('Send interval'),
+        '#type' => 'options',
+        '#options' => $send_intervals,
+        '#default_value' => $this->send_interval,
+      );
+    }
+    return $element;    
+  }
+  public function element_fields() {
+    $element = array();
+    return $element;
+  }
+  public function element_fields_info($fields) {
+    $elements = array();
+    foreach ($fields as $field) {
+      $elements[$field->position] = $field->element_info();
+    }
+    return $elements;
+  }
+  public function element_fields_edit($fields) {
+    $elements = array('#tree' = TRUE);
+    foreach ($fields as $field) {
+      $elements[$field->position] = $field->element_edit();
+    }
+    return $elements;
+  }  
+  public function element_operation($operation) {
+    $elements = array('#type' => 'fieldset');
+    switch ($operation) {
+      case 'add':
+      case 'confirm':
+        $elements['subscribe'] = array('#type' => 'submit', '#value' => t('Create subscription'));
+        break;
+      case 'edit':
+        $elements['save'] = array('#type' => 'submit', '#value' => t('Save subscription'));
+        // no break
+      case 'delete':
+        $elements['delete'] = array('#type' => 'submit', '#value' => t('Delete subscription'));
+        break;
+    }
+    $elements['cancel'] = array('#type' => 'submit', '#value' => t('Cancel'));
+    return $elements;
+  }
+  /**
+   * Process form operation
+   * 
+   * @todo Handle confirmation better
+   */
+  protected function form_operation($operation, $form, &$form_state) {
+    switch ($operation) {
+      case 'add':
+      
+      case 'edit':
+        
+      case 'confirm':
+        
+    }    
+  }
+
+  /**
+   * Build subscription instance from form submission
+   */
+  public static function build_from_submission($form, &$form_state) {
+    // The subscription object should be here, it may be a subscription type
+    $subscription = $form_state['values']['subscription'];
+    $return $subscription->is_instance() ? $subscription : $subscription->get_instance();
+  }
+  /**
+   * Set instance properties from form submission
+   */
+  protected function set_properties_from_submission($form, &$form_state) {
+    // Process regular values and validate
+    $this->set_properties_from_values($form_state['values'], TRUE);
+    // There may be optional fields to add
+    if ($fields = $this->build_fields_from_submission($form, &$form_state)) {
+      
+    }
+    return $subscription;
+  }
+  /**
+   * Set instance properties from url parameters
+   */
+  public function set_properties_from_url($query = NULL) {
+    $params = isset($query) ? $query : $_GET;
+    $result = $this->set_properties_from_values($params, TRUE);
+    $result = $result && $this->set_fields_from_values($params);
+    return $result;
+  }
+  /**
+   * Set instance properties from array of values
+   */
+  public function set_properties_from_values($values, $validate = TRUE) {
+      // Process some other fields that may be there
+    foreach (array('send_method', 'send_interval') as $field) {
+      if (isset($values[$field])) {
+        $this->set_property($field, $values[$field]);
+      }
+    }    
+  }
+  /**
+   * Build instance fields form URL parameters
+   * 
+   * @param $values
+   *   Array of field values indexed by field position
+   */
+  protected function set_fields_from_values($values = array()) {
+    $result = TRUE;
+    // Set field values, they come in the query string indexed by field position
+    foreach ($this->get_editable_fields() as $field) {
+      if (isset($values[$field->position])) {
+        // Validate (TRUE) and set value
+        $result = $result && $field->set_value($values[$field->position], TRUE);
+      }
+    }
+    return $result;
+  }
+  /**
+   * Set property, possibly from form submission
+   */
+  protected function set_property($name, $value, $validate = TRUE) {
+    $this->$name = $value;
+  }
+  /**
+   * Build submitted fields
+   */
+  protected function build_fields_from_submission($form, &$form_state) {
+    $fields = array();
+    if (!empty($form_state['values']['subscription_fields'])) {
+      $field_values = $form_state['values']['subscription_fields'];
+      // In this case we have known fields that are always indexed by position
+      foreach ($this->subscription_type()->get_instance_fields() as $field) {
+        if (isset($field_values[$field->position])) {
+          $build = Notifications_Field::build_from_value($field_values[$field->position], $field->type, $field->position);
+          if ($build) {
+            $fields[$field->position] = $build;
+          }
+        }
+      }
+    }
+    return $fields;
+  }
   /**
   * Validate form submission
   */
@@ -609,10 +808,11 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
   }
   public function get_unsubscribe_link($options = array()) {
+    $options += array('skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0));
     return notifications_l($this->get_unsubscribe_text(), 'notifications/unsubscribe/' . $this->sid, $options);
   }
   public function get_unsubscribe_url($options = array()) {
-    $options += array('signed' => TRUE, 'absolute' => TRUE);
+    $options += array('signed' => TRUE, 'absolute' => TRUE, 'skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0));
     return notifications_url('notifications/unsubscribe/' . $this->sid, $options);
   }
   /**
@@ -950,6 +1150,13 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     $this->conditions = count($this->fields);
   }
   /**
+   * Get a field for a given position
+   */
+  function get_field($position) {
+    $this->set_fields();
+    return isset($this->fields[$position]) ? $this->fields[$position] : NULL;
+  }
+  /**
    * Get fields as array of field objects
    */
   function get_fields() {
@@ -967,7 +1174,18 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Get instance fields that don't have a value set for this type
    */
   function get_instance_fields() {
-    return $this->subscription_type()->get_instance_fields();
+    $editable = array();
+    foreach ($this->subscription_type()->get_instance_fields() as $type_field) {
+      // Get current instance field if available, new one (from type) if not
+       if ($field = $this->get_field($type_field->position)) {
+         $editable[$field->position] = $field;
+       }
+       else {
+         $this->add_field($type_field);
+         $editable[$type_field->position] = $type_field;
+       }
+    }
+    return $editable;
   }
   /**
    * Get type fields, the ones that have a value set for this type

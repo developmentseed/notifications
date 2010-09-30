@@ -49,6 +49,7 @@ function notifications_tags_notifications($op) {
     case 'subscription types':
       $types['taxonomy_term'] = array(
         'title' => t('Tags'),
+        'description' => t('Subscribe to content tagged with a given taxonomy term.'),
         'class' => 'Notifications_Taxonomy_Term_Subscription',
         'access' => array('subscribe to taxonomy terms'),
       );
