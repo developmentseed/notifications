@@ -62,6 +62,12 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return $subscription;
   }
   /**
+   * Build subscription instance
+   */
+  public static function build_instance($type) {
+    return self::build_type($type)->instance();
+  }
+  /**
    * Get description
    */
   public abstract function get_description($format = self::FORMAT_HTML);
@@ -86,6 +92,23 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Get instance of this subscription type
    */
   public abstract function instance();
+  
+  /**
+   * Get fields that are variable for subscription instance
+   */
+  public abstract function get_instance_fields();
+  /**
+   * Get type fields, the ones that have a value set for this type
+   */
+  function get_type_fields() {
+    return $this->filter_fields($this->subscription_type()->get_fields(), TRUE);
+  }
+  /**
+   * Get editable fields, the ones that are not set for type
+   */
+  function get_editable_fields() {
+    return $this->get_instance_fields();
+  }
   /**
    * Get subscription type data
    */
@@ -158,7 +181,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   }
   
   /**
-   * Filter out fields that have no value set ($isset = FALSE to get the ones that are set)
+   * Filter out fields that have no value set ($isset = FALSE to get the ones that are not set)
    */
   public static function filter_fields($fields, $isset = TRUE) {
     $result = array();
@@ -225,7 +248,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $form['subscription_info'] = $this->element_info();
     $form['send_method'] = $this->element_send_method();
     $form['send_interval'] = $this->element_send_interval();
-    if ($fields = $this->get_editable_fields()) {
+    if ($fields = $this->get_editable_fields()) {dpm($fields);
       $form['subscription_fields'] = $this->element_fields_edit($fields);
     }
     $form['controls'] = $this->element_operation($operation);
@@ -268,7 +291,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Send method: form element
    */
   public function element_send_interval() {
-    $send_methods = notifications_send_intervals($this->get_user());
+    $send_intervals = notifications_send_intervals($this->get_user());
     $element = array();
     if (count($send_intervals) > 1) {
       $element = array(
@@ -280,10 +303,22 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     }
     return $element;    
   }
+  /**
+   * Get all fields (editable and not editable)
+   */
   public function element_fields() {
     $element = array();
+    if ($type_fields = $this->get_type_fields()) {
+      $elements['info'] = $this->element_fields_info($fields);
+    }
+    if ($edit_fields = $this->get_editable_fields()) {
+      $elements['edit'] = $this->element_fields_info($fields);
+    }
     return $element;
   }
+  /**
+   * Get elements for information fields (non editable)
+   */
   public function element_fields_info($fields) {
     $elements = array();
     foreach ($fields as $field) {
@@ -291,13 +326,19 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     }
     return $elements;
   }
+  /**
+   * Get form elements for editable fields
+   */
   public function element_fields_edit($fields) {
     $elements = array('#tree' => TRUE);
     foreach ($fields as $field) {
       $elements[$field->position] = $field->element_edit();
     }
     return $elements;
-  }  
+  }
+  /**
+   * Get operation buttons for form
+   */
   public function element_operation($operation) {
     $elements = array('#type' => 'fieldset');
     switch ($operation) {
@@ -599,7 +640,7 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
    */
   public function instance() {
     $class = $this->instance;
-    return new $class();
+    return new $class(array('type' => $this->type));
   }
   /**
    * Get subscription type object
@@ -613,13 +654,13 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
    * Get object title
    */
   public function get_title() {
-    return t('Subscription type');
+    return $this->get_type('title', t('Subscription type'));
   }
   /**
    * Get object name
    */
   public function get_name() {
-    return t('Subscription');
+    return $this->get_type('name', t('Subscription'));
   }
   public function get_description($format = self::FORMAT_HTML) {
     return $this->get_type('description');
@@ -652,15 +693,6 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   }
 
   /**
-   * Build instance of this type
-   */
-  public function build_instance($object = NULL) {
-    $class = $this->instance;
-    $subscription = new $class($object);
-    $subscription->type = $this->type;
-    return $subscription;
-  }
-  /**
    * Get field types. The order is important as it will determine the field index
    */
   function field_types() {
@@ -680,8 +712,8 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   function get_fields() {
     $fields = array();
     foreach ($this->field_types as $index => $type) {
-      $value = issset($this->field_values[$index]) ? $this->field_values[$index] : NULL;
-      $fields[$index] = Notifications_Field::build($type, $value, $index);
+      $value = isset($this->field_values[$index]) ? $this->field_values[$index] : NULL;
+      $fields[$index] = Notifications_Field::build_type($type, array('value' => $value, 'position' => $index));
     }
     return $fields;
   }
@@ -689,19 +721,7 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
    * Get instance fields that don't have a value set for this type
    */
   function get_instance_fields() {
-    return $this->filter_fields($this->get_fields());
-  }
-  /**
-   * Get type fields, the ones that have a value set for this type
-   */
-  function get_type_fields() {
-    return $this->filter_fields($this->get_fields(), TRUE);
-  }
-  /**
-   * Get editable fields, usually same as instance fields
-   */
-  function get_editable_fields() {
-    return $this->get_instance_fields();
+    return $this->filter_fields($this->get_fields(), FALSE);
   }
 
   /**
@@ -897,38 +917,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   public function subscription_type() {
     return notifications_subscription($this->type);
   }
-  /**
-   * Build from type, template
-   */
-  public static function build_type($type, $template = NULL) {
-    return notifications_subscription($type)->build_instance($template);
-  }
-  /**
-   * Build for a subscription type
-   * 
-   * @param $template
-   *   Template object or subscription type
-   */
-  public static function build_object($template) {
-    return notifications_subscription($template->type)->build_instance($template);
-  }
-
-  /**
-   * Produce fieldset to edit field values
-   */
-  function fields_subform() {
-    $elements = array(
-      '#type' => 'fieldset',
-      '#tree' => TRUE,
-      '#description' => $this->get_description(),
-    );
-    foreach ($this->get_type_fields() as $index => $field) {
-      $elements[$index]['type'] = array('#type' => 'value', '#value' => $field->field);
-      $elements[$index]['value'] = array('#type' => 'value', '#value' => $field->value);
-      $elements[$index]['edit'] = $this->field_element($field->field, $field->value, TRUE, TRUE);
-    }
-    return $elements;
-  }
   
   /**
    * Get default link options
@@ -992,7 +980,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function set_user($account) {
     $account = messaging_user_object($account);
-    $this->set_user($account);
     if (!isset($this->send_interval)) {
       $this->send_interval = notifications_user_setting('send_interval', $account, 0);
     }
@@ -1000,18 +987,11 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       $this->send_method = notifications_user_setting('send_method', $account);
     }
     if (empty($this->language)) {
-      $this->set_language(); 
+      $this->language = user_preferred_language($account)->language; 
     }
-    // Return TRUE if all parameters set
-    return isset($this->uid) && isset($this->send_interval) && isset($this->send_method);
+    return $this;
   }
 
-  /**
-   * Get user account
-   */
-  function get_account() {
-    return $this->get_user();
-  }
   /**
    * Load from db
    * 
@@ -1267,6 +1247,13 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
     return $this->fields;
   }
+
+  /**
+   * Get user
+   */
+  function get_user() {
+    return isset($this->uid) ? user_load($this->uid) : NULL;
+  }
   /**
    * Get instance fields that don't have a value set for this type
    */
@@ -1284,12 +1271,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
     return $editable;
   }
-  /**
-   * Get type fields, the ones that have a value set for this type
-   */
-  function get_type_fields() {
-    return $this->subscription_type()->get_type_fields();
-  }
+
   /**
    * Get editable fields, usually same as instance fields
    */
@@ -1546,7 +1528,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    *   Array with 'name' and 'value' elements
    */
    function format_field($field, $format = self::FORMAT_HTML) {
-    notifications_include('object.inc');
+    return $field->format($format);
 
     $type = $field->field;
     $value = $field->value;
@@ -1647,13 +1629,15 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
 /**
  * List of subscriptions or subscription types
  */
-class Notifications_Subscription_List {
+class Notifications_Subscription_List implements Iterator {
   public $subscriptions = array();
   protected $instances = array();
   // Array indexed by subscription type
   protected $types = array();
   // Parameters common to all instances
   protected $instance_params = array();
+  // Index for Iterator
+  private $index = 0;
   /**
    * Construct with list of subscriptions
    */
@@ -1779,5 +1763,31 @@ class Notifications_Subscription_List {
       $elements['#title'] = t('Subscriptions (@number)', array('@number' => $number));
     }
     return $elements;
+  }
+  /**
+   * Implementation of iterator interface
+   */
+  public function rewind() {
+      $this->index = 0;
+  }
+  public function current() {
+      $k = array_keys($this->subscriptions);
+      return $this->subscriptions[$k[$this->index]];
+  }
+  public function key() {
+      $k = array_keys($this->subscriptions);
+      return $k[$this->index];
+  }
+  public function next() {
+      $k = array_keys($this->subscriptions);
+      if (isset($k[++$this->index])) {
+          return $this->subscriptions[$k[$this->index]];
+      } else {
+          return false;
+      }
+  }
+  public function valid() {
+      $k = array_keys($this->subscriptions);
+      return isset($k[$this->index]);
   }
 }

@@ -30,6 +30,21 @@ define('NOTIFICATIONS_FORMAT_TABLE', 5);
 // Format as item list (8 + 2(inline) + 1 (html))
 define('NOTIFICATIONS_FORMAT_LIST', 10);
 
+function notifications_format_items($items, $format = NOTIFICATIONS_FORMAT_LIST) {
+  if ($format & NOTIFICATIONS_FORMAT_LIST) {
+    return theme('item_list', $items);
+  }
+  elseif ($format & NOTIFICATIONS_FORMAT_TABLE) {
+    // @todo Return as table row
+  }
+  elseif ($format & NOTIFICATIONS_FORMAT_INLINE) {
+    return implode(', ', $items);
+  }
+  else {
+    return $items;
+  }
+  
+}
 /**
  * Implementation of hook_menu().
  */
@@ -385,18 +400,15 @@ function notifications_object_type($type = NULL, $field = NULL, $default = NULL)
 }
 
 /**
- * Build object
- */
-/**
  * Get info about subscription types
  *
  * @param $type
  *   String, the subscriptions type OPTIONAL
- * @param $field
- *   String, a specific field to retrieve info from OPTIONAL
+ * @param $property
+ *   String, a specific property to retrieve info from OPTIONAL
  */
-function notifications_subscription_type($type = NULL, $field = NULL, $default = NULL) {
-  return notifications_info('subscription types', $type, $field, $default);
+function notifications_subscription_type($type = NULL, $property = NULL, $default = NULL) {
+  return notifications_info('subscription types', $type, $property, $default);
 }
 
 /**
@@ -700,60 +712,31 @@ function notifications_object($type, $value) {
 }
 
 /**
- * Get info about subscription types
- *
- * @param $type
- *   String, the subscriptions type OPTIONAL
- * @param $field
- *   String, a specific field to retrieve info from OPTIONAL
- * @param $check_access
- *   Whether to check user access and filter out disabled types
- *   
- *   Information for a given field and type
- *   or information for a given field for all types
+ * Get enabled subscription types
  */
-function notifications_subscription_enabled_types($type = NULL, $field = NULL) {
+function notifications_subscription_enabled_types($type = NULL) {
   $types = &drupal_static(__FUNCTION__);
   if (!isset($types)) {
     foreach (notifications_subscription_type() as $key => $info) {
       if (empty($info['disabled']) && notifications_subscription_type_enabled($key)) {
-        $types[$key] = $info;
+        $types[$key] = notifications_subscription($key);
       }
     }
   }
-  return messaging_array_info($types, $type, $field);
+  return $type ? $types[$type] : $types;
 }
 
 /**
- * Check if this type is enabled
- * 
- * The settings will be an array with type => type when enabled or type => 0 when disabled
- * 
- * @param $type
- *   Type to check, or nothing to return all
- * @param $setvalue
- *   Set this type as enabled (TRUE) / disabled (FALSE)
+ * Check if this type is enabled or get array with all enabled types
  */
-function notifications_subscription_type_enabled($type = NULL, $setvalue = NULL) {
-  // By using a static, modules can peek and change this settings for specific pages
-  $types = &drupal_static(__FUNCTION__);
-  if (!isset($types)) {
-    $types = variable_get('notifications_subscription_types', array());
-    // For types not set, we assume enabled
-    $type_keys = array_keys(notifications_subscription_type());
-    $types += array_combine($type_keys, $type_keys);
-  }
-  if (isset($setvalue)) {
-    $types[$type] = $setvalue ? $type : 0;
-    variable_set('notifications_subscription_types', $types);
-  }
-  elseif ($type) {
-    // If we don't have a setting yet for this type, return true
-    return isset($types[$type]) ? (boolean)$types[$type] : TRUE;
+function notifications_subscription_type_enabled($type = NULL) {
+  if ($type) {
+    $info = notifications_subscription_type($type);
+    return empty($info['disabled']) && (!isset($info['enabled']) || $info['enabled']);
   }
   else {
-    // Return only the types enabled
-    return array_filter($types);
+    $types = array_keys(notifications_subscription_type());
+    return array_filter($types, 'notifications_subscription_type_enabled'); //array_combine($types, $types)
   }
 }
 
@@ -795,13 +778,15 @@ function notifications_array_filter($array, $filter, $reverse = FALSE) {
  * Array item callback to format title and description
  */
 function notifications_format_title_description($item) {
-  if (!empty($item['description'])) {
-    $description = check_plain($item['description']);
+  if (is_object($item)) {
+    $title = check_plain($item->get_title());
+    $description = check_plain($item->get_description()); 
   }
-  elseif (!empty($item['name'])) {
-    $description = check_plain($item['name']);
-  } 
-  return '<strong>' . check_plain($item['title']) . '</strong>' . (!empty($description) ? ' ' . $description : '');
+  elseif (is_array($item)) {
+    $title = isset($item['title']) ? check_plain($item['title']) : t('no title');
+    $description = isset($item['description']) ? check_plain($item['description']) : '';
+  }
+  return '<strong>' . $title . '</strong> ' . $description;
 }
 
 /**
@@ -911,18 +896,21 @@ function notifications_build_method($send_interval = NULL, $refresh = FALSE) {
 }
 
 /**
- * Invoke hook_notifications($name) on all modules
+ * Invoke hook_notifications($name) on all modules and get a property from the array
  * 
- * This is like module_invoke all with some differences:
- * - The results are just merged (not recursively)
- * - The module name is added to each resulting array
- * - We cache all the results 
+ * Properties will be overridden by the value of 'notifications_option_[$name]
  */
 function notifications_info($name, $type = NULL, $property = NULL, $default = NULL) {
   $_name = strtr($name, ' ', '_');
   $info = &drupal_static('notifications_info_' . $_name);
   if (!isset($info)) {
     $info = module_invoke_all('notifications', $name);
+    // Override with variable values
+    foreach ($info as $key => &$data) {
+      if ($options = notifications_option_get($_name . '_' . $key)) {
+        $data = array_merge($data, $options);
+      }
+    }
     // Provide alter hook: notifications_name
     drupal_alter('notifications_' . $_name, $info);
   }      
@@ -930,15 +918,22 @@ function notifications_info($name, $type = NULL, $property = NULL, $default = NU
 }
 
 /**
- * Get a option value for a given type from multiple variables
+ * Get value from notifications_option_* variables
+ * 
+ * These variables may be overridden for a page request without affecting the stored variables
+ * 
+ * @param $name
+ *   Variable name, will be prefixed with 'notifications_option_'
+ * @param $index
+ *   Optional index if it s an array variable
  */
-function notifications_get_option($name, $type = NULL, $default = NULL) {
-  $options = &drupal_static('notifications_options');
-  if (!isset($options[$name])) {
-    $options[$name] = variable_get('notifications_option_' . $name, array());
+function notifications_option_get($name, $index = NULL, $default = NULL) {
+  $options = &drupal_static('notifications_options', array());
+  if (!array_key_exists($name, $options)) {
+    $options[$name] = variable_get('notifications_option_' . $name, NULL);
   }
-  if ($type) {
-    return isset($options[$name][$type]) ? $options[$name][$type] : $default;
+  if (isset($index)) {
+    return isset($options[$name][$index]) ? $options[$name][$index] : $default;
   }
   else {
     return $options[$name];
@@ -946,20 +941,65 @@ function notifications_get_option($name, $type = NULL, $default = NULL) {
 }
 
 /**
- * Set an option value for a given type for multiple variables
+ * Set value from notifications_option_* variables
  * 
- * If no type (NULL), set the full array
+ * @param $name
+ *   Variable name, will be prefixed with 'notifications_option_'
+ * @param $value
+ *   New variable value
+ * @param $index
+ *   Optional index if it s an array variable
+ * @param $request
+ *   Set only for this page request (do not save to variables table)
  */
-function notifications_set_option($name, $type, $value) {
-  notifications_get_option($name);
-  $options = &drupal_static('notifications_options');
-  if ($type) {
-    $options[$name][$type] = $value;
+function notifications_option_set($name, $value, $index = NULL, $request = FALSE) {
+  // Make sure the variable is loaded into the static variable
+  notifications_option_get($name);
+  $options = &drupal_static('notifications_options', array());
+  if (isset($index)) {
+    $options[$name][$index] = $value;
   }
   else {
     $options[$name] = $value;
-  } 
-  variable_set('notifications_option_' . $name, $options[$name]);
+  }
+  if (!$request) {
+    variable_set('notifications_option_' . $name, $options[$name]);
+  }
+}
+/**
+ * Get an array of options indexed by type
+ * 
+ * Example: If we want to get the 'enabled' property for all subscription types
+ * - $name = 'subscription_types'
+ * - $types = array('type1', 'type2'...)
+ * We will iterate over all the 'notifications_option_subscription_type_$type' array variables
+ * and get the $property we want for them
+ */
+function notifications_option_array_get($name, $type_list, $property, $default = NULL) {
+  $type_values = array();
+  foreach ($type_list as $type) {
+    // Example 'notifications_option_subscription_types_thread' => array()
+    $value = notifications_option_get($name . '_' . $type, array());
+    if (isset($value[$property])) {
+      $type_values[$type] = $value[$property];
+    }
+    elseif (isset($default)) {
+      $type_values[$type] = $default;
+    }
+  }
+  return $type_values;
+}
+
+/**
+ * Set the same property for a family of array variables
+ */
+function notifications_option_array_set($name, $property, $values) {
+  $options = &drupal_static('notifications_options');
+  foreach ($values as $type => $value) {
+    $array = notifications_option_get($name . '_' . $type);
+    $array[$property] = $value;
+    notifications_option_set($name . '_' . $type, $array);
+  }
 }
 
 /**
@@ -1089,9 +1129,9 @@ function notifications_forms($form_id, $args) {
  * Subscription form ('add', 'edit', 'confirm')
  */
 function notifications_subscription_form($form, &$form_state, $operation, $subscription) {
-debug("form $operation");
   return $subscription->get_form($operation, $form, $form_state);
 }
+
 /**
  * Validate form submission
  */

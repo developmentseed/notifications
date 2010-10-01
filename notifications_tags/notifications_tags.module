@@ -55,11 +55,11 @@ function notifications_tags_notifications($op) {
       );
       return $types;
 
-    case 'subscription fields':
+    case 'field types':
       // Information about available fields for subscriptions
       $fields['term:tid'] = array(
         'title' => t('Taxonomy term'),
-        'class' => 'Notifications_Term_Field',
+        'class' => 'Notifications_Taxonomy_Term_Field',
       );
       return $fields;
     
@@ -67,7 +67,7 @@ function notifications_tags_notifications($op) {
       // Define object types used by subscriptions and events
       $types['taxonomy_term'] = array(
         'title' => t('Taxonomy term'),
-        'class' => 'Notifications_Tags_Term'
+        'class' => 'Notifications_Taxonomy_Term'
       );
       return $types;
  

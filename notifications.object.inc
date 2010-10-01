@@ -80,20 +80,22 @@ abstract class Notifications_Object {
   /**
    * Get object type title
    */  
-  public abstract function get_title();
+  public function get_title() {
+    return $this->get_property('title', '');
+  }
 
   /**
-   * Get object name
+   * Get object name (user name, node title, etc)
    */
   public function get_name() {
     if (!empty($this->name)) {
       return $this->name;
     }
-    elseif ($this->object()) {
-      return $this->object_name($this->object());
+    elseif ($this->get_object()) {
+      return $this->object_name($this->get_object());
     }
     else {
-      return t('None');
+      return '';
     }
   }
 
@@ -101,7 +103,7 @@ abstract class Notifications_Object {
    * Build from type, value
    */
   public static function build($type, $value) {
-    if ($class = notifications_object_type($type, 'class')) {
+    if ($class = self::type_info($type, 'class')) {
       return new $class($value);
     }
     else {
@@ -121,7 +123,7 @@ abstract class Notifications_Object {
   /**
    * Get object value
    */
-  public function object() {
+  public function get_object() {
     if (!isset($this->object)) {
       $object = isset($this->value) ? $this->object_load($this->value) : NULL;
       $this->object = $object ? $object : FALSE;
@@ -145,7 +147,7 @@ abstract class Notifications_Object {
    * Check user access. By default it will be true if object can be loaded
    */
   function user_access($account) {
-    return (bool)$this->object();
+    return (bool)$this->get_object();
   }
   /**
    * Get fields for this object type
@@ -153,12 +155,12 @@ abstract class Notifications_Object {
   function get_fields() {
     if (!isset($this->fields)) {
       $this->fields = array();
-      if ($object = $this->object()) {
+      if ($object = $this->get_object()) {
         // As this does an array_merge_recursive() we get grouped field => array(value1, value2..)
         $fields = module_invoke_all('notifications_object_' .$this->type, 'fields', $object);
         // Now we just need to filter out duplicate values
         foreach ($fields as $field) {
-          $this->fields[$field->key()] = $field;
+          $this->fields[$field->index()] = $field;
         }
       }
     }
@@ -168,94 +170,52 @@ abstract class Notifications_Object {
   /**
    * Get list of possible and existing subscriptions for user/object
    * 
-   * Was: notifications_object_user_subscriptions($type, $object, $account = NULL)
-   * 
-   * @param $type
-   *   Subscription type to get options: 'user', 'node'
-   * @param $object
-   *   The object to subscribe. It may be $node or $user
    * @param $account
    *   User account to get options/subscriptions for
    * 
-   * @return
-   *   Array of subscription options
-   *   The enabled ones will have a 'subscriptions' element loaded
+   * @return Notifications_Subscription_List
    */
   function user_subscriptions($account = NULL) {
-    $cache = &drupal_static(__FUNCTION__);
     $account = $account ? $account : $GLOBALS['user'];
-    $object = notifications_object_load($type, $object);
-    
-    // Get allowed subscription options for this account to this object
-    $subscribe_options = notifications_object_subscribe_options($type, $object, $account);
-    $allowed_options = array();
-    foreach ($subscribe_options as $option) {
-      // So far this is not a subscription but a subscription template
-      $subscription = notifications_build_subscription($option);
-      $type_key = $subscription->serialize_type();
-      // If we have this type cached we don't search more
-      if (!isset($cache[$account->uid][$type_key])) {
-        if (notifications_user_allowed_subscription($account, $subscription)) {
-          $subscription->set_account($account);
-          // If anonymous user we don't search more because we cannot find by uid
-          if ($account->uid) {
-            $find = notifications_get_subscriptions(
-              array('uid' => $account->uid, 'type' => $subscription->type),
-              $subscription->get_conditions()
-            );
-            // Allowed subscription type, we store the subscription or the template
-            if ($find) {
-              $usersubs = current($find);
-              $usersubs->name = $subscription->name;
-              $subscription = $usersubs;
-            }
-          }
-          $cache[$account->uid][$type_key] = $subscription;
-        }
-        else {
-          // Not allowed subscription type for this user
-          $cache[$account->uid][$type_key] = FALSE;
-        }
+    $subscriptions = new Notifications_Subscription_List();
+    foreach ($this->subscribe_options($account) as $subs) {
+      if ($instances = $subs->get_instance(array('uid' => $account->uid))) {
+        $subscriptions->add($instances);
       }
-      if ($cache[$account->uid][$type_key]) {
-        $allowed_options[] = $cache[$account->uid][$type_key];
-      }
-    }
-    return $allowed_options;
-  }
-  /**
-   * Get subscription options for object, account. Only enabled subscription types
-   */
-  function notifications_object_subscribe_options($type, $object, $account = NULL) {
-    $account = $account ? $account : $GLOBALS['user'];
-    $object = notifications_object_load($type, $object);
-    $subscriptions = module_invoke_all('notifications_object_' . $type, 'subscriptions', $object, $account);
-    // Filter out subscription types that are disabled
-    foreach ($subscriptions as $key => $subs) {
-      $type = is_object($subs) ? $subs->type : $subs['type'];
-      if (!notifications_subscription_type_enabled($type)) {
-        unset($subscriptions[$key]);
+      else {
+        $subscriptions->add($subs->instance()->set_user($account));
       }
     }
     return $subscriptions;
   }
-  
   /**
-   * Build subscribe / unsubscribe options for object
+   * Get subscription options for object, account. Only enabled subscription types
+   * 
+   * We pass on the user account so we cah check permissions on the fly and save lots of objects
+   * 
+   * @return Notifications_Subscription_List
    */
-  function notifications_object_subscribe_links($type, $object, $account = NULL, $subscribe_options = array(), $unsubscribe_options = array()) {
-    $links = array();
-    if ($subscriptions = notifications_object_user_subscriptions($type, $object, $account)) {
-      foreach ($subscriptions as $index => $subscription) {
-        $options = $subscription->is_instance() ? $unsubscribe_options : $subscribe_options;
-        if ($link = $subscription->build_link($options)) {
-          $links['notifications_' . $index] = $link;
-        }
-      }
+  function subscribe_options($account = NULL) {
+    $account = $account ? $account : $GLOBALS['user'];
+    $subscriptions = new Notifications_Subscription_List();
+    if ($options = $this->invoke_all('subscriptions', $object, $account)) {
+      $subscriptions->add($options);
     }
-    return $links;
+    return $subscriptions;
   }
-  
+
+  /**
+   * Get object type property
+   */
+  protected function get_property($name, $default = NULL) {
+    return $this->type_info($this->type, $name, $default);
+  }
+  /**
+   * Get object type information
+   */
+  public static function type_info($type = NULL, $property = NULL, $default = NULL) {
+    return notifications_info('object types', $type, $property, $default);
+  }
   /**
    * Run module_invoke_all('notifications_object_[type]') with this object
    */
@@ -332,7 +292,7 @@ class Notifications_Node extends Notifications_Drupal_Object {
    * Check user access
    */
   function user_access($account) {
-    if ($node = $this->object()) {
+    if ($node = $this->get_object()) {
       node_access('view', $node, $account);
     }
   }
@@ -365,7 +325,7 @@ class Notifications_User extends Notifications_Drupal_Object {
    * Check user access
    */
   function user_access($account) {
-    $user = $this->object();
+    $user = $this->get_object();
     return $user && $user->uid &&
     (
       // Always let users view their own profile.

@@ -18,7 +18,7 @@ class Notifications_Taxonomy_Term_Subscription extends Notifications_Subscriptio
  * Taxonomy term object
  */
 class Notifications_Taxonomy_Term extends Notifications_Object {
-  public $type = 'term';
+  public $type = 'taxonomy_term';
 
   /**
    * Title
@@ -51,7 +51,7 @@ class Notifications_Taxonomy_Term extends Notifications_Object {
  */
 class Notifications_Taxonomy_Term_Field extends Notifications_Field_Autocomplete {
   public $type = 'term:tid';
-  public $object_type = 'term';
+  public $object_type = 'taxonomy_term';
   /**
    * Get field name
    */

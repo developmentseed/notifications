@@ -243,7 +243,7 @@ function notifications_content_notifications($op) {
       $disabled = !variable_get('notifications_content_per_type', 0);
       $types['thread'] = array(
         'title' => t('Thread'),
-        'class ' => 'Notifications_Node_Subscription',
+        'class' => 'Notifications_Node_Subscription',
         'access' => array('subscribe to content'),
         'description' => t('Subscribe to all changes and comments for a thread.'),
       );

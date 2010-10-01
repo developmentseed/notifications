@@ -43,14 +43,15 @@ function notifications_ui_menu() {
     'file path' => drupal_get_path('module', 'system'),
   );
   // Add link for each  subscription type
-  foreach (notifications_subscription_enabled_types() as $type => $info) {
+  foreach (notifications_subscription_enabled_types() as $type => $subs) {
     $items['notifications/subscription/add/' . $type] = array(
-      'title' => check_plain($info['title']),
-      'description' => check_plain($info['description']),
-      'page callback' => 'notifications_ui_page_add',
-      'page arguments' => array(3),
+      'title' => $subs->get_title(),
+      'title callback' => 'check_plain',
+      'description' => $subs->get_description(),
+      'page callback' => 'notifications_ui_page_add_subscription',
+      'page arguments' => array($type),
       'access callback' => 'notifications_ui_access_user_add',
-      'access arguments' => array(3),
+      'access arguments' => array($type),
       'file' => 'notifications_ui.pages.inc',
     );  
   }

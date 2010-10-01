@@ -443,6 +443,14 @@ class Notifications_Event extends Notifications_Entity {
   function invoke_all($op) {
     return module_invoke_all($op, $this);
   }
+  /**
+   * Process events stored for immediate sending
+   * 
+   * This will be called from notifications_exit() when the event API is loaded
+   */
+  public static function process_immediate() {
+    return Notifications_Event_Tracker::process_immediate();
+  }
 }
 
 /**

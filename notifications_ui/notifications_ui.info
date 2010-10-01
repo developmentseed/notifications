@@ -5,3 +5,4 @@ package = Notifications
 version = VERSION
 core = 7.x
 dependencies[] = notifications
+files[] = notifications_ui.pages.inc

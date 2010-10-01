@@ -115,7 +115,7 @@ function notifications_user_forms() {
 /**
  * Main Subscription form builder
  */
-function notifications_subscription_form(&$form_state, $subscription, $destination_path = '') {
+function notifications_subscription_user_form(&$form_state, $subscription, $destination_path = '') {
   module_load_include('pages.inc', 'notifications');
   return notifications_subscription_base_form($form_state, $subscription, $destination_path);
 }
@@ -123,7 +123,7 @@ function notifications_subscription_form(&$form_state, $subscription, $destinati
 /**
  * Main subscription form validate
  */
-function notifications_subscription_form_validate($form, &$form_state) {
+function notifications_subscription_user_form_validate($form, &$form_state) {
   module_load_include('pages.inc', 'notifications');
   return notifications_subscription_base_form_validate($form, $form_state);
 }
@@ -131,7 +131,7 @@ function notifications_subscription_form_validate($form, &$form_state) {
 /**
  * Main subscriptions form submit
  */
-function notifications_subscription_form_submit($form, &$form_state) {
+function notifications_subscription_user_form_submit($form, &$form_state) {
   module_load_include('pages.inc', 'notifications');
   return notifications_subscription_base_form_submit($form, $form_state);
 }

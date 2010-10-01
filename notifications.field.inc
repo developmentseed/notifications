@@ -19,7 +19,7 @@ abstract class Notifications_Field {
   public $position;
   // Object name
   public $name;
-  // Object type
+  // Object type, generic one
   public $object_type = 'object';
   // Linked object
   protected $object;
@@ -57,20 +57,31 @@ abstract class Notifications_Field {
     return self::build_type($object->type, $object);
   }
   /**
-   * Get field value name, plain text
+   * Get field value name
    */
   function get_name() {
     if (isset($this->name)) {
-      return check_plain($this->name);
+      return $this->name;
     }
-    else if ($object = $this->get_object()) {
-      return $this->name = $object->get_name();
+    elseif ($this->get_value()) {
+      return $this->name = $this->get_object()->get_name();
     }
+    else {
+      return t('none');
+    }
+  }
+  /**
+   * Get field value
+   */
+  function get_value() {
+    return isset($this->value) ? $this->value : NULL;
   }
   /**
    * Get title for field
    */
-  public abstract function get_title();
+  public function get_title() {
+    return $this->get_property('title', ''); 
+  }
   /**
    * Get description
    */
@@ -84,6 +95,10 @@ abstract class Notifications_Field {
     if ($path = $this->get_path() && $name = $this->get_name()) {
       return l($name, $path, $options);
     }
+    else {
+      // Fallback if we have no link, will be plaintext name
+      return check_plain($this->get_name());
+    }
   }
   /**
    * Get system path
@@ -96,11 +111,16 @@ abstract class Notifications_Field {
    */
   function get_object() {
     if (!isset($this->object)) {
-      $this->object = Notifications_Object::build($this->object_type, $this->value);
+      $this->object = notifications_object($this->object_type, $this->value);
     }
     return $this->object;
   }
-
+  /**
+   * Get related Drupal object
+   */
+  function drupal_object() {
+    return $this->get_object()->get_object();
+  }
   /**
    * Get query condition for current value
    */
@@ -123,6 +143,28 @@ abstract class Notifications_Field {
     }
     return $and;
   }
+  /**
+   * Format title and value
+   */
+  function format($format = NOTIFICATIONS_FORMAT_HTML) {
+    $items = array(
+      $this->get_title(),
+      $this->format_value($format),
+    );
+    return notifications_format_items($items, $format);
+  }
+  /**
+   * Format value
+   */
+  function format_value($format = NOTIFICATIONS_FORMAT_HTML) {
+    if ($format & NOTIFICATIONS_FORMAT_HTML) {
+      return $this->get_path() ? $this->get_link() : check_plain($this->get_name()); 
+    }
+    else {
+      return check_plain($this->get_name());
+    }
+  }
+  
   /**
    * Check user access
    */
@@ -274,12 +316,13 @@ abstract class Notifications_Field {
     $element += array(
       '#title' => $this->get_title(),
       '#type' => 'textfield',
-      '#default_value' => isset($this->value) ? $this->value : NULL,
+      '#default_value' => $this->get_value(),
       '#required' => TRUE,
       '#size' => 40,
     );
     return $element;
   }
+
   /**
    * Build a form element to display this field
    */
@@ -292,6 +335,18 @@ abstract class Notifications_Field {
     return $element;
   }
   /**
+   * Get field type property
+   */
+  protected function get_property($name, $default = NULL) {
+    return $this->type_info($this->type, $name, $default);
+  }
+  /**
+   * Get field type information
+   */
+  public static function type_info($type = NULL, $property = NULL, $default = NULL) {
+    return notifications_info('field types', $type, $property, $default);
+  }
+  /**
    * PHP Magic. Regurn object properties to be serialized
    */
   public function __sleep() {
@@ -302,7 +357,7 @@ abstract class Notifications_Field {
 /**
  * Default field when we don't have information
  */
-class Notifications_Field_Default {
+class Notifications_Field_Default extends Notifications_Field {
   /**
    * Get title for field
    */
@@ -349,8 +404,8 @@ abstract class Notifications_Field_Autocomplete extends Notifications_Field {
   /**
    * Build a form element to edit this field
    */
-  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
-    $element = parent::form_edit_element($title, $required, $size);
+  function element_edit($element = array()) {
+    $element = parent::element_edit($element);
     $element['#default_value'] = $this->autocomplete_value();
     $element['#autocomplete_path'] = $this->autocomplete_path();
     return $element;
@@ -389,6 +444,7 @@ abstract class Notifications_Field_Select extends Notifications_Field {
 class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   public $type = 'node:nid';
   public $object_type = 'node';
+  
   /**
    * Get field name
    */
@@ -400,17 +456,6 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
    */
   function get_description() {
     return t('Node');
-  } 
-  /**
-   * Get object name as plain string
-   */
-  function get_name() {
-    if ($node = $this->get_object()->value()) {
-      return $html ? l($node->title, "node/$nid") : check_plain($node->title);
-    }
-    else {
-      return t('Not found');
-    }
   }
   
   /**
@@ -419,18 +464,14 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   function get_path() {
     return isset($this->value) ? 'node/' . $this->value : ''; 
   }
-  /**
-   * Format object name
-   */
-  function format_name($format = NOTIFICATIONS_FORMAT_HTML) {
-    return notifications_node_nid2title();
-  }
+
   /**
    * Get autocomplete path
    */
   function autocomplete_path() {
     return 'notifications/autocomplete/node/title';
   }
+  
   /**
    * Parse value from autocomplete
    */
@@ -441,12 +482,12 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
    * Format value for autocomplete
    */
   function autocomplete_value() {
-    $node = $this->get_object();
-    return $node ? check_plain($node->title) . ' [nid:' . $node->nid .']' : t('Not found');
+    $node = $this->drupal_object();
+    return $node ? check_plain($node->title) . ' [nid:' . $node->nid .']' : '';
   }
   // Access callback
   function user_access($account) {
-    return ($node = $this->object()) ? node_access('view', $node, $account) : FALSE;
+    return ($node = $this->drupal_object()) ? node_access('view', $node, $account) : FALSE;
   }
   /**
    * Get query condition for nodes

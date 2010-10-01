@@ -283,19 +283,18 @@ function notifications_send_intervals_form_submit($form, &$form_state) {
  * Subscription settings
  */
 function notifications_admin_subscriptions_settings() {
-  // Enabled subscription types
-  $types = array_map('notifications_format_title_description', notifications_subscription_type());
-  $enabled = notifications_subscription_type_enabled();
-  
+  // Enable / disable subscription types
+  $type_list = array_map('notifications_format_title_description', notifications_subscription_type());
   $form['subscriptions'] = array(
     '#title' => t('Enabled Subscription types'),
     '#type' => 'fieldset',
     '#collapsible' => TRUE,
   );
-  $form['subscriptions']['notifications_subscription_types'] = array(
+  $form['subscriptions']['enabled'] = array(
     '#type' => 'checkboxes',
-    '#options' => $types,
-    '#default_value' => $enabled,
+    '#options' => $type_list,
+    '#default_value' => notifications_subscription_type_enabled(),
+    '#return_value' => TRUE,
     '#description' => t('Check the available subscription types that will be enabled globally'),
   );
   // Link options. These were UI settings that will become global now, so other modules can use them without Notifications UI
@@ -334,6 +333,12 @@ function notifications_admin_subscriptions_settings() {
  * @todo d7update
  */
 function notifications_admin_subscriptions_settings_submit($form, &$form_state) {
+  $types_enabled = $form_state['values']['enabled'];
+  // Convert type name values to 1 for storage (instead of type name)
+  $enabled = array_filter($types_enabled);
+  $types_enabled = array_merge($types_enabled, array_combine($enabled, array_fill(0, count($enabled), 1)));
+  notifications_option_array_set('subscription_types', 'enabled', $types_enabled);
+  unset($form_state['values']['enabled']);
   // Submission may have been Save or Reset to defaults, so we cannot really trust submitted values
   // Instead we do a cache refresh and re-check enabled / disabled types
   drupal_static_reset('notifications_subscription_type_enabled');
