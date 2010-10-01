@@ -52,13 +52,25 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return new $class($object);
   }
   /**
+   * Build subscription type
+   */
+  public static function build_type($type) {
+    $info = self::type_info($type);
+    $class = self::type_info($type, 'class', 'Notifications_Subscription_Type');
+    $subscription = new $class($info);
+    $subscription->type = $type;
+    return $subscription;
+  }
+  /**
+   * Get description
+   */
+  public abstract function get_description($format = self::FORMAT_HTML);
+  /**
    * Get all fields for this subscription/type
    */
   public abstract function get_fields();
   /**
    * Get subscription type object
-   * 
-   * @return Notifications_Subscription_Type
    */
   public abstract function subscription_type();  
 
@@ -70,31 +82,72 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Check whether this is a stored subscription
    */
   public abstract function is_stored();
-  
   /**
-   * Get subscribe / unsubscribe link for this
+   * Get instance of this subscription type
    */
-  public abstract function get_subscription_link($options = array());
-  
+  public abstract function instance();
+  /**
+   * Get subscription type data
+   */
+  function get_type($property = NULL) {
+    return empty($this->type) ? NULL : notifications_subscription_type($this->type, $property);
+  }
+  /**
+   * Get default options for links
+   */
+  protected function get_link_options($operation, $options = array()) {
+    return $options + array('base_path' => 'notifications/subscription');
+  }
+  /**
+   * Get default link type (susbscribe || unsubscribe)
+   */
+  protected function get_link_type($type = NULL) {
+    return $type ? $type : ($this->is_stored() ? 'subscribe' : 'unsubscribe');
+  }
   /**
    * Subscribe links are ok for instances and types
    */
-  function get_subscribe_link($options = array()) {
-    $options += array('skip_confirmation' => variable_get('notifications_option_subscribe_links', 0));
-    $options += array('query' => array());
-    foreach ($this->filter_fields($this->get_fields()) as $field) {
-      $options['query'][$field->position] = $field->value;
-    }
-    return notifications_l($this->get_subscribe_text(), 'notifications/subscribe/' . $this->type, $options);
+  function get_link($type = NULL, $options = array()) {
+    $link = $this->element_link($type, $options);
+    return drupal_render($link);
+  }
+
+  /**
+   * Get default link text for this
+   */
+  protected function get_link_text($type) {
+    return $this->get_title();
   }
   /**
-   * Get subscribe / unsubscribe text for this
+   * Get path for links
    */
-  public function get_subscribe_text() {
-    return t('Subscribe to @name', array('@name', $this->get_name()));
+  protected function get_path($operation, $options = array()) {
+    $options = $this->get_link_options($operation, $options);
+    return $options['base_path'] . '/' . $operation;
   }
-  public function get_unsubscribe_text() {
-    return t('Unsubscribe from @name', array('@name', $this->get_name()));
+  /**
+   * Get URL for messages (absolute and signed)
+   */
+  public function get_url($operation, $options = array()) {
+    $options += array('absolute' => TRUE, 'signed' => TRUE);
+    return $this->get_path($operation, $options);
+  }
+  
+  /**
+   * Get link element
+   */
+  public function element_link($operation = NULL, $options = array()) {
+    $type = $this->get_link_type($operation);
+    $options = $options + $this->get_link_options($type, $options);
+    $path = $this->get_path($type, $options);
+    return array(
+        '#type' => 'link',
+        '#markup' => $this->get_link_text($type),
+        '#title' => $this->get_title(),
+        '#href'  => $path,
+        '#options' => notifications_url_options($path, $options),
+        '#description' => $this->get_description(),
+      );    
   }
 
   /**
@@ -184,7 +237,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   public function element_info() {
     $elements = array(
-      '#type' => 'fieldset'
+      '#type' => 'fieldset',
       '#title' => $this->get_title(),
     );
     $elements['name']['#markup'] = $this->get_name();
@@ -195,7 +248,9 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     }
     return $elements;
   }
-
+  /**
+   * Send method: form element
+   */
   public function element_send_method() {
     $element = array();
     $send_methods = notifications_send_methods($this->get_user());
@@ -209,6 +264,9 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     }
     return $element;    
   }
+  /**
+   * Send method: form element
+   */
   public function element_send_interval() {
     $send_methods = notifications_send_intervals($this->get_user());
     $element = array();
@@ -234,7 +292,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return $elements;
   }
   public function element_fields_edit($fields) {
-    $elements = array('#tree' = TRUE);
+    $elements = array('#tree' => TRUE);
     foreach ($fields as $field) {
       $elements[$field->position] = $field->element_edit();
     }
@@ -279,7 +337,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   public static function build_from_submission($form, &$form_state) {
     // The subscription object should be here, it may be a subscription type
     $subscription = $form_state['values']['subscription'];
-    $return $subscription->is_instance() ? $subscription : $subscription->get_instance();
+    return $subscription->is_instance() ? $subscription : $subscription->get_instance();
   }
   /**
    * Set instance properties from form submission
@@ -536,6 +594,13 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   public function is_stored() {
     return FALSE;
   }
+  /*
+   * Get instance, will be the same object
+   */
+  public function instance() {
+    $class = $this->instance;
+    return new $class();
+  }
   /**
    * Get subscription type object
    * 
@@ -556,12 +621,17 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   public function get_name() {
     return t('Subscription');
   }
-  /**
-   * Get subscription link
-   */
-  public function get_subscription_link($options = array()) {
-    return $this->get_subscribe_link();
+  public function get_description($format = self::FORMAT_HTML) {
+    return $this->get_type('description');
   }
+  /**
+   * Get path for links
+   */
+  protected function get_path($operation, $options = array()) {
+    $options = $this->get_link_options($operation, $options);
+    return $options['base_path'] . '/' . $operation . '/' . $this->type;
+  }
+
   /**
    * User access function
    */
@@ -580,16 +650,7 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
       return (boolean)$access;
     }
   }
-  /**
-   * Build subscription type
-   */
-  public static function build_type($type) {
-    $info = notifications_subscription_type($type);
-    $class = !empty($info['class']) ? $info['class'] : 'Notifications_Subscription_Type';
-    $subscription = new $class($info);
-    $subscription->type = $type;
-    return $subscription;
-  }
+
   /**
    * Build instance of this type
    */
@@ -795,7 +856,12 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   public function is_stored() {
     return !empty($this->sid);
   }
-
+  /*
+   * Get instance, will be the same object
+   */
+  public function instance() {
+    return $this;
+  }
   /**
    * Get subscribe / unsubscribe link for this
    */
@@ -865,26 +931,57 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
   
   /**
-   * Build subscribe /unsubscribe link
+   * Get default link options
    */
-  function build_link($options = array()) {
-    if ($this->is_instance()) {
-      // Unsubscribe link
-      $title = t('Unsubscribe from: @name', array('@name' => $this->get_name()));
-      $options += array('sid' => $this->sid);
-      $props = notifications_subscription_get_link('unsubscribe', $this, $options);
+  protected function get_link_options($operation, $options = array()) {
+    switch ($operation) {
+      case 'subscribe':
+      case 'add':
+        $options += array(
+          'query' => array(),
+          'base_path' => 'notifications/subscribe',
+          'skip_confirmation' => variable_get('notifications_option_subscribe_links', 0)
+        );
+        // Add instance fields to the query string indexed by position
+        foreach ($this->filter_fields($this->get_fields()) as $field) {
+          $options['query'][$field->position] = $field->value;
+        }
+      case 'unsubscribe':
+        return $options + array(
+          'base_path' => 'notifications',
+          'skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0)
+        );     
+      default:
+        return parent::get_link_options($operation, $options);
     }
-    else {
-      // Subscribe link
-      $title = t('Subscribe to: @name', array('@name' => $this->get_name()));
-      $options += array('type' => $this->type, 'fields' => $this->get_conditions());
-      $props = notifications_subscription_get_link('subscribe', $this, $options);
+  }
+  /**
+   * Get subscribe / unsubscribe text for this
+   */
+  protected function get_link_text($type, $options = array()) {
+    switch ($type) {
+      case 'subscribe':
+        return t('Subscribe to: @name', array('@name', $this->get_name()));
+      case 'unsubscribe':
+        return t('Unsubscribe from: @name', array('@name', $this->get_name()));
+      default:
+        return parent::get_link_text($type);
     }
-    return $props ? array(
-      'title' => $title,
-      'html' => TRUE,
-      'href' => $props['href'],
-    ) + $props['options'] : NULL;
+  }
+    /**
+   * Get path for links
+   */
+  protected function get_path($operation, $options = array()) {
+    $options = $this->get_link_options($operation, $options);
+    switch ($operation) {
+      case 'subscribe':
+      case 'add':
+        return $options['base_path'] . '/subscribe/' . $this->type;
+      case 'unsubscribe':
+        return $options['base_path'] . '/unsubscribe/' . $this->sid; 
+      default:
+        return parent::get_path($operation, $options);
+    }
   }
 
   /**
@@ -893,7 +990,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * @param $account
    *   User account or user uid
    */
-  function set_account($account) {
+  function set_user($account) {
     $account = messaging_user_object($account);
     $this->set_user($account);
     if (!isset($this->send_interval)) {
@@ -1204,32 +1301,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function check_fields($check_values = TRUE) {
     $this->set_fields();
-    $instance_fields = array();
-    foreach ($this->get_fields() as $field) {
-      if ($check_values && !isset($field->value)) {
-        return FALSE;
-      }
-      else {
-        $instance_fields[] = $field->field;
-      }
-    }
-    $type_fields = array();
-    foreach ($this->get_type_fields() as $field) {
-      $type_fields[] = $field->field;
-    }
-    if (count($instance_fields) != count($type_fields)) {
-      return FALSE;
-    }
-    else {
-      // Set the number of conditions if not set 
-      if (!isset($this->conditions)) {
-        $this->conditions = count($instance_fields);
-      }      
-      // Order the arrays so we can compare them. Note that we can have the same field name more than once
-      asort($instance_fields);
-      asort($type_fields);
-      return array_values($instance_fields) == array_values($type_fields);
-    }
+    return TRUE;
   }
   /**
    * Set field values, all at a time from the ones coming from the subscription type.
@@ -1246,41 +1318,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     }
   }
 
-  /**
-   * Convert fields to a standard format: arrray of object fields
-   */
-  public static function normalize_fields($fields) {
-    $normal = array();
-    if ($fields && is_array($fields)) {
-      foreach ($fields as $key => $value) {
-        if (is_object($value)) {
-          $normal[] = $value;
-        }
-        elseif (is_array($value)) {
-          // Object or Array with type, value keys
-          $normal[] = self::build_field($value['type'], $value['value']);
-        }
-        elseif (is_numeric($key) && is_string($value)) {
-          // In this case the value is the field type
-          $normal[] = self::build_field($value, NULL);
-        }
-        else {
-          // Default, key should be field type, value may be NULL
-          $normal[] = self::build_field($key, $value);
-        }
-      }
-    }
-    return $normal;    
-  }
-  /**
-   * Build field from type, value
-   */
-  public static function build_field($type, $value) {
-    return (object)array(
-      'field' => $type,
-      'value' => $value,
-    );
-  }
   /**
    * Get destination object
    */
@@ -1325,12 +1362,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     elseif (is_numeric($destination)) {
       $this->mdid = $destination;
     }
-  }
-  /**
-   * Get subscription type data
-   */
-  function get_type($property = NULL) {
-    return empty($this->type) ? NULL : notifications_subscription_type($this->type, $property);
   }
 
   /**
@@ -1438,7 +1469,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   /**
    * Get description
    */
-  function get_description($format = self::FORMAT_HTML) {
+  public function get_description($format = self::FORMAT_HTML) {
     return $this->get_type('description');
   }
   // Get title

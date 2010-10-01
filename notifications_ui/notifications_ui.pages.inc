@@ -8,31 +8,11 @@
 /**
  * User add subscription
  */
-function notifications_ui_page_user_add($account, $type = NULL) {
-  drupal_set_title(t('Add subscription'));
-  if ($type && ($subscription = notifications_subscription($type))) {    
-    $subscription = $subscription->get_instance()->set_user($account);
-    return drupal_get_form('notifications_subscription_add_form', $subscription);
-  }
-  else {
-    $options = array();
-    foreach (notifications_subscription_user_types($account) as $type => $subscription) {
-        $options[$type] = array(
-          '#type' => 'link',
-          '#markup' => $subscription->get_subscribe_text(),
-          '#href'  => "user/$account->uid/notifications/add/$key",
-          '#description' => $type->get_description(),
-        );
-      }
-    }
-    if ($options) {
-      $build['title']['#markup'] = t('Select a susbscription type:');
-      $build['options'] = $options;
-    }
-    else {
-      $build['message'] = t('No available subscription types.');
-    }
-    return $build;
-  }  
+function notifications_ui_page_add($type) {debug($type);
+  $account = $GLOBALS['user'];
+  $subscription = notifications_subscription($type)
+    ->instance()
+    ->set_user($account);
+  return drupal_get_form('notifications_subscription_add_form', $subscription);
 }
 

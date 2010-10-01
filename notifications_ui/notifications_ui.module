@@ -35,26 +35,23 @@ function notifications_ui_menu() {
     'file' => 'notifications_ui.admin.inc',
   );
   // Add single subscription page
-  $items['user/%user/notifications/add'] = array(
+  $items['notifications/subscription/add'] = array(
     'title' => 'Add subscription',
-    'page callback' => 'notifications_ui_page_user_add',
-    'page arguments' => array(1),
+    'page callback' => 'system_admin_menu_block_page',
     'access callback' => 'notifications_ui_access_user_add',
-    'access arguments' => array(1),
-    'file' => 'notifications_ui.pages.inc',
-    'weight' => 100,
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
   );
   // Add link for each  subscription type
   foreach (notifications_subscription_enabled_types() as $type => $info) {
-    $items['user/%user/notifications/add/' . $type] = array(
-      'type' => MENU_LOCAL_TASK,
+    $items['notifications/subscription/add/' . $type] = array(
       'title' => check_plain($info['title']),
-      'page callback' => 'notifications_ui_page_user_add',
-      'page arguments' => array(1, 4),
+      'description' => check_plain($info['description']),
+      'page callback' => 'notifications_ui_page_add',
+      'page arguments' => array(3),
       'access callback' => 'notifications_ui_access_user_add',
-      'access arguments' => array(1, 4),
+      'access arguments' => array(3),
       'file' => 'notifications_ui.pages.inc',
-      'weight' => 100,
     );  
   }
   return $items;
@@ -63,7 +60,8 @@ function notifications_ui_menu() {
 /**
  * Menu access callback: add subscription
  */
-function notifications_ui_access_user_add($account, $type = NULL) {
+function notifications_ui_access_user_add($type = NULL) {
+  $account = $GLOBALS['user'];
   if ($type) {
     return notifications_subscription($type)->user_access($account);
   }

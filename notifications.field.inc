@@ -162,7 +162,7 @@ abstract class Notifications_Field {
     }
     elseif (is_array($data)) {
       if (isset($data['type']) && (!$type || $type == $data['type'])) {
-        $field = self::build_type($data['type']))) {
+        $field = self::build_type($data['type']);
         if (isset($data['value'])) {
           $value = $field->parse_value($data['value']);
           $field->set_value($value, TRUE); // Set value with previous validation
@@ -339,7 +339,7 @@ abstract class Notifications_Field_Autocomplete extends Notifications_Field {
    * Parsing values may be different for these ones
    */
   function parse_value($value) {
-    is (is_string($value) && ($parsed = $this->autocomplete_parse($value))) {
+    if (is_string($value) && ($parsed = $this->autocomplete_parse($value))) {
       return $parsed;
     }
     else {

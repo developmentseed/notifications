@@ -1053,3 +1053,25 @@ function notifications_token_list($type = 'all') {
   }
   return $tokens;
 }
+
+/**
+ * Implementation of hook_form_alter()
+ */
+function notifications_form_alter(&$form, $form_state, $form_id) {
+  switch ($form_id) {
+    // Default send interval for user form
+    case 'user_profile_form':
+      if ($form['_category']['#value'] == 'account' && (user_access('maintain own subscriptions') || user_access('administer notifications'))) {
+        $form['messaging']['#title'] = t('Messaging and Notifications settings');
+        $send_intervals = notifications_send_intervals();
+        $form['messaging']['notifications_send_interval'] = array(
+          '#type' => 'select',
+          '#title' => t('Default send interval'),
+          '#options' => $send_intervals,
+          '#default_value' => notifications_user_setting('send_interval', $form['_account']['#value']),
+          '#disabled' => count($send_intervals) == 1,
+          '#description' => t('Default send interval for subscriptions.'),
+        );    
+      }
+  }
+}

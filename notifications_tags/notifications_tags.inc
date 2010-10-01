@@ -11,10 +11,7 @@ class Notifications_Taxonomy_Term_Subscription extends Notifications_Subscriptio
   public function get_title() {
     return t('Tag subscription');
   }
-  
-  public function get_description() {
-    return t('Subscribe to content tagged with a given taxonomy term.');
-  }
+
 }
 
 /**
