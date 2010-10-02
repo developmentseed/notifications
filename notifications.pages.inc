@@ -6,39 +6,23 @@
  */
 
 /**
- * Manage destination form. Edit subscriptions for a destination
- */
-function notifications_edit_destination_form($form_state, $destination) {
-  notifications_include('destination.inc');
-  $account = $destination->get_user();
-  $form = notifications_destination_view_subform($destination);
-  
-  return $form;
-}
-
-/**
  * Menu callback add subscription
  * 
  * Presents confirmation page or not depending on confirm parameter
  */
-function notifications_page_subscribe($account, $type, $fields, $values, $send_interval = NULL, $send_method = NULL) {
+function notifications_page_subscribe($substype) {
+  $account = $GLOBALS['user'];
   // Build subscriptions object
-  $subscription = notifications_build_subscription(array(
-    'uid' => $account->uid,
-    'type' => $type,
-    'send_interval' => $send_interval,
-    'send_method' => $send_method,
-  ));
-  $subscription->add_field_args($fields, $values);
-  $subscription->set_account($account);
-
-  // Check permission again for these parameters
-  if ($account->uid && notifications_page_check_access($account->uid) && notifications_user_allowed_subscription($account, $subscription)) {
-    if (notifications_page_check_confirmation()) {
-      // Subscribe, no confirmation
-      notifications_save_subscription($subscription);
+  if ($substype->user_access($account)) {
+    $subscription = $substype
+      ->instance()
+      ->set_user($account)
+      ->set_properties_from_url();
+    // If everything is ok and signed to skip confirmation, go ahead
+    if ($subscription->check_destination() && $subscription->check_fields() && notifications_check_signature('skip')) {
+      $subscription->save();
       drupal_set_message(t('Your subscription was activated.'));
-      drupal_goto();
+      drupal_goto();      
     }
     else {
       // Ask for confirmation
@@ -46,12 +30,9 @@ function notifications_page_subscribe($account, $type, $fields, $values, $send_i
       return drupal_get_form('notifications_subscription_confirm_form', $subscription);
     }
   }
-  else {
-    drupal_set_message(t('Subscription type or parameters not allowed'), 'error');
-    drupal_goto();
-  }
-    
-  drupal_access_denied();
+  drupal_set_message(t('Subscription or parameters not allowed.'), 'error');
+  drupal_goto();
+  return "HOW WE REACHED HERE?";
 }
 
 /**
@@ -144,6 +125,17 @@ function notifications_page_unsubscribe_overview() {
     $output .= '<p>' . t('You can try to <a href="@user-login">log in</a>, request a <a href="@request-password">new password</a>, or contact the site administrator.', array('@user-login' => url('user/login'), '@request-password' => url('user/password'))) . '</p>';
   }
   return $output;
+}
+
+/**
+ * Manage destination form. Edit subscriptions for a destination
+ */
+function notifications_edit_destination_form($form_state, $destination) {
+  notifications_include('destination.inc');
+  $account = $destination->get_user();
+  $form = notifications_destination_view_subform($destination);
+  
+  return $form;
 }
 
 /**

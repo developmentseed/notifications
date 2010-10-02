@@ -126,9 +126,9 @@ function notifications_menu() {
     'file' => 'notifications.admin.inc',
     'type' => MENU_LOCAL_TASK,
   );
-return $items;
   // Subscribe links. For this items access will be checked later in the page
   $items['notifications/subscribe/%notifications_subscription_type'] = array(
+    'title' => 'Subscribe',
     'type' => MENU_CALLBACK,
     'page callback' => 'notifications_page_subscribe',
     'page arguments' => array(2),
@@ -138,12 +138,14 @@ return $items;
   );
   // Unsubscribe links This page will need to work with anonymous users
   // The parameter will be a list of sids, separated by commas
-  $items['notifications/unsubscribe/'] = array(
-    'type' => t('Unsubscribe'),
+  $items['notifications/unsubscribe/%notifications_subscription'] = array(
+    'title' => 'Unsubscribe',
+    'type' => MENU_CALLBACK,
     'page callback' => 'notifications_page_unsubscribe',
     'access callback' => TRUE,
     'file' => 'notifications.pages.inc',
   );
+  return $items;
   // Edit subscription, stand alone page
   $items['notifications/subscription/%notifications_subscription'] = array(
     'type' => MENU_CALLBACK,
@@ -178,16 +180,14 @@ return $items;
  * 
  * More access checking depending on subscription type will be done at the destination page
  */
-function notifications_access_subscribe($subscription, $account) {
-  if ($account && $subscription) {
-    if (notifications_check_signature()) {
+function notifications_access_subscribe($substype, $account = NULL) {
+  if ($substype && notifications_subscription_type_enabled($substype->type)) {
+    $account = $account ? $account : $GLOBALS['user'];
+    if ($account->uid) {
+      return user_access('create subscriptions', $account);
+    }
+    elseif (notifications_check_signature()) {
       return TRUE; // Signed link
-    }
-    elseif (user_access('administer notifications') || user_access('manage all subscriptions')) {
-      return TRUE;
-    }
-    else {
-      return ($GLOBALS['user']->uid == $account->uid) && $subscription->user_access($account);
     }
   }
 }
@@ -541,6 +541,10 @@ function notifications_permission() {
     'administer notifications' =>  array(
       'title' => t('Administer notifications'),
       'description' => t('Administer all notifications options.'),
+    ),
+    'create subscriptions' =>  array(
+      'title' => t('Create subscriptions'),
+      'description' => t('Create own subscriptions.'),
     ),
     'maintain own subscriptions' =>  array(
       'title' => t('Maintain own subscriptions'),

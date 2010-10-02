@@ -278,21 +278,52 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   public function form_validate($form, &$form_state) {
     $this->set_properties_from_submission($form, &$form_state);
-    return $subscription->validate_submission($form, &$form_state);
+    return $this->validate_submission($form, &$form_state);
   }
   /**
    * Process form submission
    */
   public function form_submit($form, &$form_state) {
-    $this->set_properties_from_submission($form, &$form_state);
-    if ($operation = $form_state['values']['operation']) {
-      return $subscription->form_operation($operation, $form, $form_state);
+    $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : '';
+    if ($op == t('Cancel')) {
+      $operation = 'cancel';
     }
     else {
-      return $this;
+      $operation = $form_state['values']['operation'];
+      $this->set_properties_from_submission($form, &$form_state);
     }
+    return $this->form_operation($operation, $form, $form_state);
   }
   
+  /**
+   * Run form operation
+   */
+  protected function form_operation($operation, $form, &$form_state) {
+    switch ($operation) {
+      case 'cancel':
+        drupal_set_message(t('Operation cancelled.'), 'warning');
+        return FALSE;
+      case 'confirm':
+      case 'add':     
+      case 'edit':
+        $result = $this->save();
+        switch ($result) {
+          case SAVED_NEW:
+            drupal_set_message(t('Your subscription has been created.'));
+            break;
+          case SAVED_UPDATED;
+            drupal_set_message(t('Your subscription has been updated.'));
+            break;
+          default:
+            drupal_set_message(t('Error saving your subscription.'), 'warning');
+        }
+        return $result;
+
+      default:
+        drupal_set_message('Operation not implemented yet.', 'warning');
+        return FALSE;
+    }
+  }
   /**
    * Get form for this subscription
    */
@@ -303,7 +334,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $form['send_method'] = $this->element_send_method();
     $form['send_interval'] = $this->element_send_interval();
     if ($fields = $this->get_editable_fields()) {
-      $form['subscription_fields'] = $this->element_fields_edit($fields);
+      $form['subscription_fields'] = $operation == 'confirm' ? $this->element_fields_info($fields) : $this->element_fields_edit($fields);
     }
     $form['controls'] = $this->element_operation($operation);
     return $form;
@@ -410,21 +441,6 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $elements['cancel'] = array('#type' => 'submit', '#value' => t('Cancel'));
     return $elements;
   }
-  /**
-   * Process form operation
-   * 
-   * @todo Handle confirmation better
-   */
-  protected function form_operation($operation, $form, &$form_state) {
-    switch ($operation) {
-      case 'add':
-      
-      case 'edit':
-        
-      case 'confirm':
-        
-    }    
-  }
 
   /**
    * Build subscription instance from form submission
@@ -444,16 +460,16 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     if ($fields = $this->build_fields_from_submission($form, &$form_state)) {
       
     }
-    return $subscription;
+    return $this;
   }
   /**
    * Set instance properties from url parameters
    */
   public function set_properties_from_url($query = NULL) {
     $params = isset($query) ? $query : $_GET;
-    $result = $this->set_properties_from_values($params, TRUE);
-    $result = $result && $this->set_fields_from_values($params);
-    return $result;
+    return $this
+      ->set_properties_from_values($params, TRUE)
+      ->set_fields_from_values($params);
   }
   /**
    * Set instance properties from array of values
@@ -464,7 +480,8 @@ abstract class Notifications_Subscription extends Notifications_Entity {
       if (isset($values[$field])) {
         $this->set_property($field, $values[$field]);
       }
-    }    
+    }
+    return $this; 
   }
   /**
    * Build instance fields form URL parameters
@@ -481,7 +498,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
         $result = $result && $field->set_value($values[$field->position], TRUE);
       }
     }
-    return $result;
+    return $this;
   }
   /**
    * Set property, possibly from form submission
@@ -511,42 +528,8 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   /**
   * Validate form submission
   */
-  public static function validate_submission(&$form_state) {
-    // The object may be already created ir it may be an array so we use this function that handles that
-    $subscription = notifications_build_subscription($form_state['values']['subscription']);
-    // There may be optional fields to add
-    if (!empty($form_state['values']['subscription_fields'])) {
-      foreach ($form_state['values']['subscription_fields'] as $field) {
-        if (isset($form_state['values'][$field])) {
-          $field_value = $form_state['values'][$field];
-          switch ($field) {
-            case 'fields':
-              notifications_include('object.inc');
-              foreach ($field_value as $key => $field_values) {
-                if ($value = notifications_field_real_value($field_values['type'], $field_values['edit'])) {
-                  $form_state['values']['parsed_fields'][$key] = array('type' => $field_values['type'], 'value' => $value);
-                }
-                else {
-                  form_set_error("$field]['edit", t('Invalid value for this field.'));
-                  break;
-                }
-              }
-              break;
-            case 'send_method':
-              // There may be other destination validation running that sets the destination object before
-              if (empty($form_state['values']['destination']) && (!$subscription->mdid || $subscription->send_method != $field_value)) {
-                if ($subscription->validate_destination($field_value)) {
-                  $form_state['values']['subscription_fields'][] = 'destination';
-                }
-                else {
-                  form_set_error('send_method', t('Cannot create a valid destination.'));
-                }
-              }
-              break;
-          }   
-        }
-      }
-    }
+  public static function validate_submission($form, &$form_state) {
+    // @todo
   }
 
   /**
@@ -919,25 +902,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   public function instance() {
     return $this;
   }
-  /**
-   * Get subscribe / unsubscribe link for this
-   */
-  public function get_subscription_link($options = array()) {
-    if ($this->is_stored()) {
-      return $this->get_unsubscribe_link();
-    }
-    else {
-      return $this->get_subscribe_link();
-    }
-  }
-  public function get_unsubscribe_link($options = array()) {
-    $options += array('skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0));
-    return notifications_l($this->get_unsubscribe_text(), 'notifications/unsubscribe/' . $this->sid, $options);
-  }
-  public function get_unsubscribe_url($options = array()) {
-    $options += array('signed' => TRUE, 'absolute' => TRUE, 'skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0));
-    return notifications_url('notifications/unsubscribe/' . $this->sid, $options);
-  }
+
   /**
    * User access function
    */
@@ -1114,47 +1079,19 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function check_access($account = NULL) {
     $account = $account ? $account : $this->get_account();
-    return notifications_user_allowed_subscription($account, $this);
+    // @todo check access to all subscription fields
+    
   }
   /**
    * Create destination for this subscription
    */
   function create_destination($method = NULL, $address = NULL) {
-    return $this->validate_destination($method, $address, TRUE);
-  }
-  /**
-   * Validate destination for this subscription
-   */
-  function validate_destination($method = NULL, $address = NULL, $create = FALSE) {
     $account = $this->get_user();
-    if ($method && $address) {
-      if ($create) {
-        $destination = Messaging_Destination::create_method($method, $address, $account->uid);
-        $this->set_destination($destination);
-        return $destination;
-      }
-      else {
-        // Just validate
-        return Messaging_Destination::validate_method($method, $address, $account->uid);
-      }
+    if (Messaging_Destination::validate_method($method, $address, $account)) {
+      return Messaging_Destination::build_method($method, $address, $account);
     }
-    elseif ($account->uid) {
-      // For registered users we have other ways to create a destination
-      if ($method) {
-        if ($address = messaging_user_destination($account, $method)) {
-          // We have a method and address for this user account, fine
-          return $this->validate_destination($method, $address, $create);
-        }
-      }
-      else {
-        // We still can have a send method or get it from account
-        $method = !empty($this->send_method) ? $this->send_method  : messaging_method_default($account);
-        if ($method) {
-          return $this->validate_destination($method, NULL, $create);
-        }
-      }
-    }    
   }
+
 
   /**
    * Save to db
@@ -1292,15 +1229,10 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
 
   /**
-   * Get user
-   */
-  function get_user() {
-    return isset($this->uid) ? user_load($this->uid) : NULL;
-  }
-  /**
    * Get instance fields that don't have a value set for this type
    */
   function get_instance_fields() {
+    $this->set_fields();
     $editable = array();
     foreach ($this->subscription_type()->get_instance_fields() as $type_field) {
       // Get current instance field if available, new one (from type) if not
@@ -1321,12 +1253,22 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   function get_editable_fields() {
     return $this->get_instance_fields();
   }
+  
+  /**
+   * Get user account
+   */
+  function get_user() {
+    return isset($this->uid) ? user_load($this->uid) : NULL;
+  }
   /**
    * Check all fields are there and optinally that they have a value
+   * 
+   * @todo check values?
    */
   function check_fields($check_values = TRUE) {
     $this->set_fields();
-    return TRUE;
+    $fields = $this->get_fields();
+    return count($fields) === count($this->filter_fields($fields));
   }
   /**
    * Set field values, all at a time from the ones coming from the subscription type.
