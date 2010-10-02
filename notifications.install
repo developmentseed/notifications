@@ -60,6 +60,14 @@ function notifications_schema() {
         'description' => 'Alternate destination field for anonymous subscriptions, may be an email',
         'type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '',
       ),
+      'created' => array(
+        'description' => 'Unix timestamp, when it was created.',
+        'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
+      ),
+      'updated' => array(
+        'description' => 'Unix timestamp, when it was created.',
+        'type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'
+      ),
     ),
     'primary key' => array('sid'),
   );

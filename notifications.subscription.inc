@@ -45,10 +45,10 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     }
   }
   /**
-   * Build from db object or template
+   * Build from db object or template. We use the 'instance' class
    */
   public static function build_object($object) {
-    $class = self::type_info($object->type, 'class', 'Notifications_Subscription_Instance');
+    $class = self::type_info($object->type, 'instance', 'Notifications_Subscription_Instance');
     return new $class($object);
   }
   /**
@@ -858,7 +858,9 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   public $status = 1;
   // The address for the destination (Unused, just for logging. To be obsoleted)
   public $destination = '';
-
+  // Timepstamps
+  public $created;
+  public $updated;
   // Temporary variables, not saved to the DB
   protected $format;
   protected $objects;
@@ -1088,6 +1090,10 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function save() {
     $update = $this->is_stored();
+    $this->updated = REQUEST_TIME;
+    if (!$update) {
+      $this->created = REQUEST_TIME;
+    }
     $result = drupal_write_record('notifications_subscription', $this, $update ? 'sid' : array());
     return $result && $this->save_fields($update);
   }

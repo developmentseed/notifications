@@ -35,13 +35,14 @@ function notifications_help($path, $arg) {
 /**
  * Menu callback: subscriptions administration.
  */
-function notifications_admin_manage_subscriptions($form_state) {
+function notifications_admin_manage_subscriptions($form, &$form_state) {
+  module_load_include('manage.inc', 'notifications');
   if (isset($form_state['values']['operation']) && $form_state['values']['operation'] == 'delete') {
-    return notifications_multiple_delete_confirm($form_state, array_filter($form_state['values']['subscriptions']));
+    return notifications_manage_multiple_delete_confirm($form_state, array_filter($form_state['values']['subscriptions']));
   }
-  $form = notifications_subscriptions_filter_form(TRUE);
-
-  $form['#theme'] = 'notifications_subscriptions_filter_form';
+  //$form['filter'] = notifications_manage_subscriptions_filter_form(TRUE);
+  $form['#submit'][] = 'notifications_manage_subscriptions_filter_form_submit';
+  //$form['#theme'] = 'notifications_subscriptions_filter_form';
   $form['admin']  = notifications_manage_subscriptions_form();
 
   return $form;

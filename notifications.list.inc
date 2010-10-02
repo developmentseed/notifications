@@ -215,17 +215,3 @@ class Notifications_Subscription_List implements Iterator {
   }
 }
 
-/**
- * Display list as links item list
- */
-function theme_notifications_subscription_list_links($variables) {
-  $subscriptions = $variables['subscriptions'];
-  $items = array();
-  foreach ($subscription as $subscription) {
-    $items[] = $subscription->subscription_link();
-  }
-  dpm($items);
-  if ($items) {
-    return theme('item_list', array('items' => $items));
-  }
-}

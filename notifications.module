@@ -103,22 +103,21 @@ function notifications_menu() {
     'weight' => -10,
   );
   // Manage existing subscriptions
-  $items['admin/people/subscriptions'] = array(
-    'title' => 'Manage subscriptions',
+  $items['admin/notifications'] = array(
+    'title' => 'Subscriptions',
     'description' => 'Manage existing subscriptions.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('notifications_admin_manage_subscriptions'),
     'access arguments' => array('administer notifications'),
     'file' => 'notifications.admin.inc',
   ); 
-
-  $items['admin/people/subscriptions/admin'] = array(
-    'title' => 'Administer',
+  $items['admin/notifications/admin'] = array(
+    'title' => 'Administer subscriptions',
     'description' => 'Administer subscriptions.',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'access arguments' => array('administer notifications'),
   );
-  $items['admin/people/subscriptions/status'] = array(
+  $items['admin/notifications/status'] = array(
     'title' => 'Status',
     'description' => 'Summary of existing subscriptions.',
     'page callback' => 'notifications_admin_status_page',
@@ -1169,7 +1168,7 @@ function notifications_theme() {
       'render_element' => 'form',
       'file' => 'notifications.manage.inc',
     ),
-    'notifications_subscriptions_filter_form' => array(
+    'notifications_manage_subscriptions_filter_form' => array(
       'render_element' => 'form',
       'file' => 'notifications.manage.inc',
     ),
