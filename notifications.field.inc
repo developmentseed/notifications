@@ -37,6 +37,13 @@ abstract class Notifications_Field {
     }
   }
   /**
+   * Quick build
+   */
+  public static function build($type, $value) {
+    return self::build_type($type, array('value' => $value));
+  }
+
+  /**
    * Build field instance
    */
   public static function build_type($type, $template = NULL) {
@@ -124,22 +131,25 @@ abstract class Notifications_Field {
   /**
    * Get query condition for current value
    */
-  function get_query_condition() {
-    if (isset($value)) {
-      return $this->get_value_condition($value);
+  function get_query_condition($alias = 'f') {
+    if (isset($this->value)) {
+      return $this->get_value_condition($this->value, $alias);
     }
   }
   /**
    * Get query condition for a given value
    */
-  function get_value_condition($value) {
+  function get_value_condition($value, $alias = 'f') {
     $and = db_and();
-    $and->condition('type', $this->type);
+    $and->condition($alias . '.type', $this->type);
+    if (isset($this->position)) {
+      $and->condition($alias . '.position', $this->position);
+    }
     if ($this->data_type == 'int') {
-      $and->condition('intval', (int)$value);
+      $and->condition($alias . '.intval', (int)$value);
     }
     else {
-      $and->condition('value', $value);
+      $and->condition($alias . '.value', $value);
     }
     return $and;
   }
@@ -484,10 +494,6 @@ class Notifications_Node_Field extends Notifications_Field_Autocomplete {
   function autocomplete_value() {
     $node = $this->drupal_object();
     return $node ? check_plain($node->title) . ' [nid:' . $node->nid .']' : '';
-  }
-  // Access callback
-  function user_access($account) {
-    return ($node = $this->drupal_object()) ? node_access('view', $node, $account) : FALSE;
   }
   /**
    * Get query condition for nodes

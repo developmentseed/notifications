@@ -68,6 +68,49 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return self::build_type($type)->instance();
   }
   /**
+   * Load from db
+   * 
+   * @param $sid
+   *   Subscription id 
+   * @param $full
+   *   Whether to load all fields in the same operation
+   */
+  public static function load($sid) {
+    $subscriptions = entity_load('notifications_subscription', $sid);
+    return reset($subscriptions);
+  }
+  /**
+   * Load multiple from db
+   */
+  public static function load_multiple($conditions, $fields = array()) {
+    // First, fitch sids
+    $query = db_select('notifications_subscription', 's')->fields('s', array('sid'));
+    foreach ($conditions as $key => $value) {
+      $query->condition('s.' . $key, $value);
+    }
+    foreach ($fields as $field) {
+      $alias = $query->join('notifications_subscription_fields');
+      $query->condition($field->get_query_condition($alias));
+    }
+    // Then build entities
+    if ($sids = $query->execute()->fetchColumn()) {
+      return entity_load('notifications_subscription', $sids);
+    }
+    else {
+      return array();
+    }
+  }
+  /**
+   * Get all existing instances form the db
+   */
+  public function get_instances($params) {
+    $params += array('type' => $this->type);
+    // Add all the fields that have a value set (type and instance fields)
+    $fields = $this->filter_fields($this->get_fields());
+    return $this->load_multiple($params, $fields);
+  }
+
+  /**
    * Get description
    */
   public abstract function get_description($format = self::FORMAT_HTML);
@@ -110,6 +153,17 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return $this->get_instance_fields();
   }
   /**
+   * Map field to its right position in this subscription
+   */
+  function map_field($field) {
+    // First we try with instance fields
+    foreach ($this->get_instance_fields() as $instance) {
+      if ($instance->type == $field->type) {
+        return $instance->position;
+      }
+    }
+  }
+  /**
    * Get subscription type data
    */
   function get_type($property = NULL) {
@@ -119,13 +173,13 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Get default options for links
    */
   protected function get_link_options($operation, $options = array()) {
-    return $options + array('base_path' => 'notifications/subscription');
+    return $options + array('base_path' => 'notifications/subscription/' . $operation);
   }
   /**
    * Get default link type (susbscribe || unsubscribe)
    */
   protected function get_link_type($type = NULL) {
-    return $type ? $type : ($this->is_stored() ? 'subscribe' : 'unsubscribe');
+    return $type ? $type : ($this->is_stored() ? 'unsubscribe' : 'subscribe');
   }
   /**
    * Subscribe links are ok for instances and types
@@ -494,30 +548,13 @@ abstract class Notifications_Subscription extends Notifications_Entity {
       }
     }
   }
-  
 
   /**
-   * Get objects to which we can subscribe on current page.
-   * 
-   * Was: notifications_object_page_objects()
-   */
-  static function page_objects() {
-    $objects = &drupal_static(__FUNCTION__);
-    if (!isset($objects)) {
-      $objects = module_invoke_all('notifications_subscription', 'page objects');
-    }
-    return $objects;
-  }
-
-  /**
-   * Build subscriptions for current user to an array of objects.
-   * 
-   * Was notifications_object_page_subscriptions($objects)
+   * Build subscriptions for array of objects and user account.
    * 
    * @return Notifications_Subscription_List
    */
-  static function page_subscriptions($objects, $account = NULL) {
-    $account = $account ? $account : $GLOBALS['user'];
+  static function object_subscriptions($objects, $account) {
     $subscriptions = new Notifications_Subscription_List();
     foreach ($objects as $object) {
       if ($more = $object->user_subscriptions($account)) {
@@ -936,7 +973,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
         }
       case 'unsubscribe':
         return $options + array(
-          'base_path' => 'notifications',
+          'base_path' => 'notifications/unsubscribe',
           'skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0)
         );     
       default:
@@ -964,9 +1001,9 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     switch ($operation) {
       case 'subscribe':
       case 'add':
-        return $options['base_path'] . '/subscribe/' . $this->type;
+        return $options['base_path'] . '/' . $this->type;
       case 'unsubscribe':
-        return $options['base_path'] . '/unsubscribe/' . $this->sid; 
+        return $options['base_path'] . '/' . $this->sid; 
       default:
         return parent::get_path($operation, $options);
     }
@@ -1000,17 +1037,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
 
   /**
-   * Load from db
-   * 
-   * @param $sid
-   *   Subscription id 
-   * @param $full
-   *   Whether to load all fields in the same operation
-   */
-  public static function load($sid) {
-    return notifications_subscription_load($sid);
-  }
-  /**
    * Load condition fields from db
    */
   function load_fields() {
@@ -1018,7 +1044,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     $this->set_fields();
     if (!empty($this->sid)) {
       foreach (Notifications_Field::load_multiple(array('sid' => $this->sid)) as $field) {
-        $this->add_field($field);
+        $this->set_field($field);
       }       
     }
   }
@@ -1224,12 +1250,21 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       $this->add_field($type, isset($params[$index]) ? $params[$index] : NULL);
     }    
   }
-  
   /**
-   * Set a field. 
+   * Add field from type, value
    */
-  function add_field($field) {
+  function add_field($type, $value) {
+    $field = Notifications_Field::build($type, $value);
+    return $this->set_field($field);
+  }
+  /**
+   * Set a field, we may need to find out the position
+   */
+  function set_field($field, $overwrite = TRUE) {
     $field->set_subscription($this);
+    if (!isset($field->position)) {
+      $field->position = $this->map_field($field);
+    }
     $this->fields[$field->position] = $field;
     $this->conditions = count($this->fields);
     return $this;
@@ -1273,7 +1308,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
          $editable[$field->position] = $field;
        }
        else {
-         $this->add_field($type_field);
+         $this->set_field($type_field);
          $editable[$type_field->position] = $type_field;
        }
     }
@@ -1300,7 +1335,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     if (isset($fields)) {
       $this->fields = array();
       foreach ($fields as $field) {
-        $this->add_field($field);
+        $this->set_field($field);
       }
     }
     elseif (!isset($this->fields)) {
@@ -1379,20 +1414,19 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   /**
    * Get instance of this one for certain conditions
    * 
+   * If we got multiple ones, return just the first one
+   * 
    * @param $params
    *   Parameters to add to the subscription type to get an instance of itself
-   * @param $return_self
-   *   Return itself if no instance found
    */
   function get_instance($params = array(), $return_self = FALSE) {
     $params += array('type' => $this->type);
-    $cache = &drupal_static('Notifications_Subscription_instances');
-    $cache_key = notifications_array_serialize($params);
-    if (!isset($cache[$cache_key])) {
-      $subs = notifications_get_subscriptions($params);
-      $cache[$cache_key] = $subs ? current($subs) : FALSE;      
+    if ($instances = $this->get_instances($params)) {
+      return reset($instances);
     }
-    return $cache[$cache_key] ? $cache[$cache_key] : ($return_self ? $this : NULL);
+    else {
+      return $return_self ? $this : FALSE;
+    }
   }
 
   /**

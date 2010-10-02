@@ -74,12 +74,28 @@ class Notifications_Subscription_List implements Iterator {
     return $list;
   }
   /**
+   * Build instances for all with given parameters
+   * 
+   * @todo Handle multiple instances with the same parameters
+   */
+  function build_instances($params = array()) {
+    $this->instance_params = $params;
+    foreach ($this->subscriptions as $index => $subscription) {
+      if ($instance = $subscription->get_instance($params)) {
+        $this->subscriptions[$index] = $instance;
+      }
+      else {
+        $this->subscription[$index] = $subscription->instance();
+      }
+    }
+  }
+  /**
    * Set user to all subscriptions
    */
   function set_user($user) {
     $this->instance_params['uid'] = $user->uid;
     foreach ($this->get_instances() as $subscription) {
-      $subscription->ser_user($user);
+      $subscription->set_user($user);
     }
     return $this;
   }
@@ -94,6 +110,37 @@ class Notifications_Subscription_List implements Iterator {
     return $this;
   }
 
+  /**
+   * Get all subscription links
+   */
+  public function get_links($options = array()) {
+    $links = array();
+    foreach ($this->get_instances() as $subscription) {
+      $links[] = $subscription->get_link(NULL, $options);
+    }
+    return $links;
+  }
+  
+  /**
+   * Get options form
+   */
+  public function get_form($type, $form, &$form_state) {
+    $form['type'] = array('#type' => 'value', '#value' => $this);
+    $form['subscriptions'] = array('#type' => 'value', '#value' => $this);
+    $form['list'] = $this->get_elements($type);
+    $form['save'] = array('#type' => 'submit', '#value' => t('Update'));
+    return $form;
+  }
+  /**
+   * Get elements
+   */
+  public function get_elements($type) {
+    switch ($type) {
+      case 'checkboxes':
+      default:
+        return $this->element_checkboxes();
+    }
+  }
   /**
    * Subform with subscription options so it can be reused for a fieldset on a bigger form
    * 
@@ -126,60 +173,45 @@ class Notifications_Subscription_List implements Iterator {
    * 
    * Was: notifications_object_options_fieldset($subscriptions, $title = FALSE)
    */
-  function options_fieldset($title = FALSE) {
-    $elements = array(
-      '#tree' => TRUE,
-    );
-    // Process all options building the array of indexed params for each
-    $options = $params = $defaults = array();
-    $index = 1; // Index to map checkboxes to subscriptions
-    $number = 0; // Number of active subscriptions
-    foreach ($this->subscriptions as $subscription) {
+  function element_checkboxes($element = array()) {
+    $options = $defaults = array();
+    foreach ($this->get_instances() as $index => $subscription) {
       $options[$index] = $subscription->get_name();
-      $params[$index] = $subscription;
-      // Check wether user is subscribed
-      if ($subscription->is_instance()) {
+      if ($subscription->is_stored()) {
         $defaults[] = $index;
-        $number++;
       }
-      $index++;    
     }
-    $elements['params'] = array('#type' => 'value', '#value' => $params);
-    $elements['options'] = array(
+    return $element + array(
       '#type' => 'checkboxes',
-      '#default_value' => $defaults,
       '#options' => $options,
+      '#default_value' => $defaults,
     );
-    if ($title) {
-      $elements['#title'] = t('Subscriptions (@number)', array('@number' => $number));
-    }
-    return $elements;
   }
   /**
    * Implementation of iterator interface
    */
   public function rewind() {
-      $this->index = 0;
+    $this->index = 0;
   }
   public function current() {
-      $k = array_keys($this->subscriptions);
-      return $this->subscriptions[$k[$this->index]];
+    $k = array_keys($this->subscriptions);
+    return $this->subscriptions[$k[$this->index]];
   }
   public function key() {
-      $k = array_keys($this->subscriptions);
-      return $k[$this->index];
+    $k = array_keys($this->subscriptions);
+    return $k[$this->index];
   }
   public function next() {
-      $k = array_keys($this->subscriptions);
-      if (isset($k[++$this->index])) {
-          return $this->subscriptions[$k[$this->index]];
-      } else {
-          return false;
-      }
+    $k = array_keys($this->subscriptions);
+    if (isset($k[++$this->index])) {
+        return $this->subscriptions[$k[$this->index]];
+    } else {
+        return false;
+    }
   }
   public function valid() {
-      $k = array_keys($this->subscriptions);
-      return isset($k[$this->index]);
+    $k = array_keys($this->subscriptions);
+    return isset($k[$this->index]);
   }
 }
 

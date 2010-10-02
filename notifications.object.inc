@@ -65,18 +65,7 @@ abstract class Notifications_Object {
   public $name;
   protected $object;
   protected $fields;
-  /**
-   * Constructor
-   */
-  public function __construct($value = NULL) {
-    if (is_numeric($value) || is_string($value)) {
-      $this->value = $value;
-    }
-    elseif (is_object($value) && $value) {
-      $this->object = $value;
-      $this->value = $this->object_value($value);
-    }
-  }
+
   /**
    * Get object type title
    */  
@@ -100,20 +89,43 @@ abstract class Notifications_Object {
   }
 
   /**
-   * Build from type, value
+   * Build from type, value (can be a plain value or a Drupal object)
    */
-  public static function build($type, $value) {
-    if ($class = self::type_info($type, 'class')) {
-      return new $class($value);
+  public static function build($type, $value = NULL) {
+    $class = self::type_info($type, 'class', 'Notifications_Drupal_Object');
+    $object = new $class(array('type' => $type));
+    if (isset($value)) {
+      $object->set_value($value);
+    }
+    return $object;
+  }
+  /**
+   * Set value (reset object)
+   */
+  public function set_value($value) {
+    if (is_object($value)) {
+      $this->set_object($value);
     }
     else {
-      // We don't know this type, build default object
-      $object = new Notifications_Drupal_Object($value);
-      $object->type = $type;
-      return $object;
+      $this->value = $value;
+      $this->object = NULL;
     }
+    return $this;
   }
-
+  /**
+   * Get object value
+   */
+  public function get_value() {
+    return isset($this->value) ? $this->value : NULL;
+  }
+  /**
+   * Set object
+   */
+  public function set_object($object) {
+    $this->object = $object;
+    $this->value = $this->object_value($object);
+    return $this;
+  }
   /**
    * Get object unique key as string. The default will be 'type:value'
    */
@@ -170,24 +182,16 @@ abstract class Notifications_Object {
   /**
    * Get list of possible and existing subscriptions for user/object
    * 
-   * @param $account
-   *   User account to get options/subscriptions for
-   * 
    * @return Notifications_Subscription_List
    */
   function user_subscriptions($account = NULL) {
     $account = $account ? $account : $GLOBALS['user'];
-    $subscriptions = new Notifications_Subscription_List();
-    foreach ($this->subscribe_options($account) as $subs) {
-      if ($instances = $subs->get_instance(array('uid' => $account->uid))) {
-        $subscriptions->add($instances);
-      }
-      else {
-        $subscriptions->add($subs->instance()->set_user($account));
-      }
-    }
+    $subscriptions = $this->subscribe_options($account);
+    $subscriptions->build_instances(array('uid' => $account->uid));
+    $subscriptions->set_user($account);
     return $subscriptions;
   }
+
   /**
    * Get subscription options for object, account. Only enabled subscription types
    * 
@@ -195,10 +199,9 @@ abstract class Notifications_Object {
    * 
    * @return Notifications_Subscription_List
    */
-  function subscribe_options($account = NULL) {
-    $account = $account ? $account : $GLOBALS['user'];
+  function subscribe_options($account) {
     $subscriptions = new Notifications_Subscription_List();
-    if ($options = $this->invoke_all('subscriptions', $object, $account)) {
+    if ($options = $this->invoke_all('subscriptions', $account)) {
       $subscriptions->add($options);
     }
     return $subscriptions;
@@ -217,10 +220,10 @@ abstract class Notifications_Object {
     return notifications_info('object types', $type, $property, $default);
   }
   /**
-   * Run module_invoke_all('notifications_object_[type]') with this object
+   * Run module_invoke_all('notifications_object_[type]') with this (Drupal) object
    */
   protected function invoke_all($op, $param = NULL) {
-    return module_invoke_all('notifications_object_' . $type, $op, $this, $param);    
+    return module_invoke_all('notifications_object_' . $this->type, $op, $this->get_object(), $param);    
   }
 
   /**

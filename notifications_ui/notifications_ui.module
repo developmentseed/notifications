@@ -290,15 +290,15 @@ function notifications_ui_block_view($delta = '') {
   $block = array();
   switch ($delta) {
     case 'links':
-      if ($subscriptions = notifications_subscription_page_options()) {
+      if ($links = notifications_subscription_list('page subscriptions')->get_links()) {
         $block['subject'] = t('Subscriptions');
-        $block['content'] = theme('notifications_subscription_list_links', array('subscriptions' => $subscriptions));
+        $block['content'] = theme('item_list', array('items' => $links));
       }
       break;
     case 'checkboxes':
-      if ($subscriptions = notifications_subscription_page_options()) {
+      if ($subscriptions = notifications_subscription_list('page subscriptions') && count($subscriptions)) {
         $block['subject'] = t('Subscriptions');
-        $block['content'] = drupal_get_form('notifications_subscription_list_form', $subscriptions);
+        $block['content'] = drupal_get_form('notifications_subscription_list_form', 'checkboxes', $subscriptions);
       }
       break;
       

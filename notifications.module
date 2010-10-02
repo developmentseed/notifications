@@ -233,31 +233,45 @@ function notifications_access_user_add($account = NULL, $type = NULL) {
 /**
  * Check signature from URL and query string
  */
-function notifications_check_signature() {
-  if (!empty($_GET['signature'])) {
-    $query = $_GET;
-    $signature = $query['signature'];
-    unset($query['signature']);
-    unset($query['q']); // Trim out the path element
-    $path = current_path();
-    if ($signature === notifications_url_signature($path, $query)) {
-      // Now check timestamp, it should be < 7 days
-      if (!empty($query['timestamp']) && time() - 24 * 7 * 3600 > (int)$query['timestamp']) {
-        drupal_set_message(t('This link has expired. Please get a new one or contact the site administrator.'), 'error');
-        return FALSE;
-      }        
-      else {
-        // Signature is ok and timestamp is ok or we don't have one.
-        // (If you sign links that never expire, that's your problem.)
-        return TRUE;
+function notifications_check_signature($option = 'result') {
+  $page_checked = &drupal_static(__FUNCTION__);
+  if (!isset($page_checked)) {
+    $page_checked = array(
+      'signed' => NULL,
+      'result' => NULL,
+      'timestamp' => 0,
+      'skip' => FALSE,
+    );
+    if (!empty($_GET['signature'])) {
+      $page_checked['signed'] = FALSE;
+      $query = $_GET;
+      $signature = $query['signature'];
+      unset($query['signature']);
+      unset($query['q']); // Trim out the path element
+      $path = current_path();
+      if ($signature === notifications_url_signature($path, $query)) {
+        $paget_checked['signed'] = TRUE;
+        // Now check timestamp, it should be < 7 days
+        if (!empty($query['timestamp']) && time() - 24 * 7 * 3600 > (int)$query['timestamp']) {
+          drupal_set_message(t('This link has expired. Please get a new one or contact the site administrator.'), 'error');
+          $page_checked['result'] = FALSE;
+        }        
+        else {
+          // Signature is ok and timestamp is ok or we don't have one.
+          // (If you sign links that never expire, that's your problem.)
+          $page_checked['timestamp'] = isset($query['timestamp']) ? (int)$query['timestamp'] : 0;
+          $page_checked['result'] = TRUE;
+          $page_checked['skip'] = !empty($query['skip']);
+        }
       }
-    }
-    else {
-      drupal_set_message(t('This link is not valid anymore. Please get a new one or contact the site administrator.'), 'error');
-      return FALSE;
+      else {
+        drupal_set_message(t('This link is not valid anymore. Please get a new one or contact the site administrator.'), 'error');
+        return $page_checked['result'] = FALSE;
+      }
     }
   }
   // Return nothing, we didn't have any signature
+  return $option ? $page_checked[$option] : $page_checked;
 }
 
 
@@ -358,6 +372,36 @@ function notifications_cron_queue_info() {
 */
 
 /**
+ * Implementation of hook_notifications()
+ */
+function notifications_notifications($op) {
+  switch ($op) {
+    case 'object types':
+      $types['node'] = array(
+        'title' => t('Node'),
+        'class' => 'Notifications_Node',
+      );
+      $types['user'] = array(
+        'title' => t('User'),
+        'class' => 'Notifications_User',
+      );
+      return $types;
+   
+    case 'field types':
+      // Information about available fields for subscriptions
+      $fields['node:nid'] = array(
+        'title' => t('Node'),
+        'class' => 'Notifications_Node_Field',
+      );
+      $fields['user:uid'] = array(
+        'title' => t('User'),
+        'class' => 'Notifications_User_Field',
+      );
+      return $fields;
+  }
+}
+
+/**
  * Implementation of hook_cron()
  */
 function notifications_cron() {
@@ -449,9 +493,28 @@ function notifications_subscription($type) {
 function notifications_subscription_list($name) {
   $types = &drupal_static(__FUNCTION__);
   if (!isset($types[$name])) {
-    $types[$name] = new Notifications_Subscription_List($name);
+    $list = new Notifications_Subscription_List($name);
+    // Modules can add or remove subscriptions from the list
+    module_invoke_all('notifications_subscription_list', $name, $list);
+    $types[$name] = $list;
   }
   return $types[$name];
+}
+
+/**
+ * Implementation of hook_notifications_subscription_list().
+ */
+function notifications_notifications_subscription_list($name, $list) {
+  switch ($name) {
+    case 'page subscriptions':
+      $account = $GLOBALS['user'];
+      if ($objects = module_invoke_all('notifications_subscription', 'page objects')) {
+        if ($add = Notifications_Subscription::object_subscriptions($objects, $account)) {
+          $list->add($add);
+        }
+      }
+      break;
+  }
 }
 
 /**
@@ -692,7 +755,7 @@ function notifications_delete_destination($mdid) {
 }
 
 /**
- * Create a wrapped object and keep a cache of created objects.
+ * Create a wrapped object and keep a static cache of created objects.
  * 
  * @param $type
  *   Object type
@@ -715,8 +778,8 @@ function notifications_object($type, $value) {
   else {
     $object = Notifications_Object::build($type, $value);
     // Not all objects are cacheable, only if they have a value
-    if ($object->value) {
-      $cache[$type][$object->value] = $object;
+    if ($key = $object->get_value()) {
+      $cache[$type][$key] = $object;
     }
     return $object;
   }
@@ -1161,6 +1224,12 @@ function notifications_subscription_form_submit($form, &$form_state) {
 }
 
 /**
+ * Form with subscription links
+ */
+function notifications_subscription_list_form($form, &$form_state, $type, $subscriptions) {
+  return $subscriptions->get_form($type, $form, $form_state);
+}
+/**
  * Wrapper for l() function with some more options
  */
 function notifications_l($text, $path, $options = array()) {
@@ -1213,22 +1282,4 @@ function notifications_url_signature($path, $query = array()) {
   }
   $string = $query ? notifications_array_serialize($query) : 'none'; 
   return md5('notifications' . drupal_get_private_key() .':' . $path . ':' . $string); 
-}
-
-/**
- * Get subscription options for all known objects in the page
- */
-function notifications_subscription_page_options() {
-  $subscriptions = &drupal_static(__FUNCTION__);
-  $account = $GLOBALS['user'];
-  if (!isset($subscriptions)) {
-    $subscriptions = new Notifications_Subscription_List();
-    if ($objects = Notifications_Subscription::page_objects()) {
-dpm($objects);
-      if ($add = Notifications_Subscription::page_subscriptions($objects, $account)) {
-        $subscriptions->add($add);
-      }
-    }
-  }
-  return $subscriptions;
 }
