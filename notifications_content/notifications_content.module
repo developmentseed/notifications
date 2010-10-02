@@ -368,7 +368,7 @@ function notifications_content_notifications_subscription($op, $subscription = N
     case 'page objects':
       // Return objects on current page to which we can subscribe
       if (arg(0) == 'node' && is_numeric(arg(1)) && ($node = menu_get_object('node'))) {
-        return array('node' => $node);  
+        return notifications_object('node', $node);  
       }
       break;
   }  
@@ -390,13 +390,12 @@ function notifications_content_notifications_object_node($op, $node, $account = 
       $options = array();
       // Thread
       if (notifications_content_type_enabled($node->type, 'thread')) {
-        $options[] = array(
-          'name' => t('This post'),
-          'type' => 'thread',
-          'fields' => array('nid' => $node->nid),
-        );
+        $options[] = Notifications_Subscription::build_instance('thread')
+          ->set_name(t('This post')
+          ->add_field(notifications_field('node:nid', $node->nid));
       }
       // Content type subscriptions
+      /*
       if (notifications_content_type_enabled($node->type, 'nodetype')) { 
         $options[] = array(
           'name' => t('Posts of type @type', array('@type' => notifications_content_type_name($node->type))),
@@ -419,7 +418,8 @@ function notifications_content_notifications_object_node($op, $node, $account = 
           'type' => 'typeauthor',
           'fields' => array('author' => $node->uid, 'type' => $node->type),
         );
-      }      
+      }
+      */
       return $options;
       break;
   }

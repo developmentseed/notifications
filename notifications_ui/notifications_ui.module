@@ -124,20 +124,6 @@ function notifications_ui_type_enabled($type) {
 }
 
 /**
- * Implementation of hook_forms()
- */
-function notifications_ui_forms($form_id) {
-  $forms = array();
-  if (strpos($form_id, 'notifications_ui_options_form_') === 0) {
-    $forms[$form_id] = array(
-      'callback' => 'notifications_subscriptions_options_form',
-    );
-  }
-  return $forms;
-
-}
-
-/**
  * Implementation of hook_form_alter()
  * 
  */
@@ -280,33 +266,47 @@ function notifications_ui_object_subscriptions($type, $object) {
 }
 
 /**
- * Implementation of hook_block()
- * 
- * This block is just for registered users. For anonymous see notifications_anonymous module.
+ * Implementation of hook_block_info
  */
-function notifications_ui_block($op = 'list', $delta = 0) {
-  if ($op == 'list') {
-    $blocks[0]['info'] = t('Subscriptions');
-    $blocks[0]['cache'] = BLOCK_NO_CACHE;
-    return $blocks;
-  }
-  else if ($op == 'view' && notifications_ui_user_access()) {
-    // Only return block if we have something for it
-    if ($options = notifications_ui_page_options('block')) {
-      $block['subject'] = t('Subscriptions');
-      $block['content'] = drupal_get_form('notifications_subscriptions_options_form', $options);   
-      return $block;  
-    }
-  }  
+function notifications_ui_block_info() {
+  // This example comes from node.module.
+  $blocks['links'] = array(
+    'info' => t('Subscription links'),
+    'cache' => DRUPAL_NO_CACHE
+  );
+  $blocks['checkboxes'] = array(
+    'info' => t('Subscription checkboxes'),
+    'cache' => DRUPAL_NO_CACHE
+  );
+  return $blocks;
 }
 
 /**
- * Get subscription options for current page/user and a display type
- * 
- * @param $display
- *   Display type: 'links', 'form', 'block', etc...
+ * Implementation of hook_block_view
  */
-function notifications_ui_page_options($display) {
+function notifications_ui_block_view($delta = '') {
+  // This example comes from node.module. Note that you can also return a
+  // renderable array rather than rendered HTML for 'content'.
+  $block = array();
+  switch ($delta) {
+    case 'links':
+      if ($subscriptions = notifications_subscription_page_options()) {
+        $block['subject'] = t('Subscriptions');
+        $block['content'] = theme('notifications_subscription_list_links', array('subscriptions' => $subscriptions));
+      }
+      break;
+    case 'checkboxes':
+      if ($subscriptions = notifications_subscription_page_options()) {
+        $block['subject'] = t('Subscriptions');
+        $block['content'] = drupal_get_form('notifications_subscription_list_form', $subscriptions);
+      }
+      break;
+      
+  }
+  return $block;
+}
+
+function notifications_ui_page_options($theme) {
   notifications_include('object.inc');
   $objects = array();
   foreach (notifications_object_page_objects() as $type => $object) {

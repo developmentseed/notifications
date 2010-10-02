@@ -444,6 +444,17 @@ function notifications_subscription($type) {
 }
 
 /**
+ * Build a subscriptions list object
+ */
+function notifications_subscription_list($name) {
+  $types = &drupal_static(__FUNCTION__);
+  if (!isset($types[$name])) {
+    $types[$name] = new Notifications_Subscription_List($name);
+  }
+  return $types[$name];
+}
+
+/**
  * Get info about templates
  *
  * @param $type
@@ -1103,6 +1114,10 @@ function notifications_theme() {
       'render_element' => 'element',
       'file' => 'notifications.pages.inc',
     ),
+    'notifications_subscription_list_links' => array(
+      'render_element' => 'subscriptions',
+      'file' => 'notifications.list.inc',    
+    ),
   );
 }
 
@@ -1198,4 +1213,22 @@ function notifications_url_signature($path, $query = array()) {
   }
   $string = $query ? notifications_array_serialize($query) : 'none'; 
   return md5('notifications' . drupal_get_private_key() .':' . $path . ':' . $string); 
+}
+
+/**
+ * Get subscription options for all known objects in the page
+ */
+function notifications_subscription_page_options() {
+  $subscriptions = &drupal_static(__FUNCTION__);
+  $account = $GLOBALS['user'];
+  if (!isset($subscriptions)) {
+    $subscriptions = new Notifications_Subscription_List();
+    if ($objects = Notifications_Subscription::page_objects()) {
+dpm($objects);
+      if ($add = Notifications_Subscription::page_subscriptions($objects, $account)) {
+        $subscriptions->add($add);
+      }
+    }
+  }
+  return $subscriptions;
 }

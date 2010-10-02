@@ -22,3 +22,4 @@ function notifications_ui_uninstall() {
  */
 // Renamed variable notifications_ui_subscribe_links to notifications_option_subscribe_links
 // Renamed variable 'notifications ui unsubscribe_links' to notifications_option_unsubscribe_links
+// Deleted notifications_ui_types
