@@ -859,9 +859,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   // The address for the destination (Unused, just for logging. To be obsoleted)
   public $destination = '';
 
-
   // Temporary variables, not saved to the DB
-  protected $destination_object;
   protected $format;
   protected $objects;
   // Name for this subscription that will be quite dependent on context
@@ -989,6 +987,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function set_user($account) {
     $account = messaging_user_object($account);
+    $this->uid = $account->uid;
     if (!isset($this->send_interval)) {
       $this->send_interval = notifications_user_setting('send_interval', $account, 0);
     }
@@ -1054,24 +1053,14 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
   
   /**
-   * Check destination or create it if new
+   * Check destination (user, method, address, etc...)
    */
   function check_destination() {
-    if (empty($this->mdid)) {
-      return $this->create_destination();
-    }
-    elseif ($destination = $this->get_destination()) {
-      // We may need to create a new destination if this address is not valid for method has changed
-      if (!empty($this->send_method) && messaging_method_info($this->send_method, 'address_type') != $destination->type) {
-        return $this->create_destination();
-      }
-      else {
-        return $destination;
-      }
+    if ($this->get_user()) {
+      return !empty($this->send_method);
     }
     else {
-      // Last try, figure out a destination
-      return $this->create_destination();
+      return !empty($this->send_method) && !empty($this->mdid);
     }
   }
   /**
@@ -1088,7 +1077,8 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   function create_destination($method = NULL, $address = NULL) {
     $account = $this->get_user();
     if (Messaging_Destination::validate_method($method, $address, $account)) {
-      return Messaging_Destination::build_method($method, $address, $account);
+      $destination = Messaging_Destination::build_method($method, $address, $account);
+      $this->set_destination($destination);
     }
   }
 
@@ -1329,6 +1319,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
     elseif (is_numeric($destination)) {
       $this->mdid = $destination;
     }
+    return $this;
   }
 
   /**

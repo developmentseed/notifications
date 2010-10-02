@@ -17,7 +17,7 @@ function notifications_page_subscribe($substype) {
     $subscription = $substype
       ->instance()
       ->set_user($account)
-      ->set_properties_from_url();
+      ->set_properties_from_url();dpm($subscription);
     // If everything is ok and signed to skip confirmation, go ahead
     if ($subscription->check_destination() && $subscription->check_fields() && notifications_check_signature('skip')) {
       $subscription->save();
