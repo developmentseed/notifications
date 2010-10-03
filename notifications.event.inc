@@ -68,13 +68,14 @@ class Notifications_Event extends Notifications_Entity {
    * Build Event from type and action
    */
   public static function build_type($type, $action) {
+    $params = array('type' => $type, 'action' => $action);
     if ($class = self::type_info($type . '-' . $action, 'class')) {
-      return new $class(self::type_info($type));
+      return new $class($params + self::type_info($type));
     }
     else {
       $class = self::type_info($type, 'class', 'Notifications_Event');
       // For this case $type and $action may override default type info 
-      return new $class(array('type' => $type, 'action' => $action) + self::type_info());
+      return new $class($params + self::type_info());
     }
   }
   /**
@@ -145,8 +146,9 @@ class Notifications_Event extends Notifications_Entity {
    * The value will be taken from this event's defaults, but can be overriden on hook_notifications('event types')
    */
   function create_template() {
-    $class = $this->get_type('template', 'class', 'Notifications_Template');
-    $this->template = new $class($this);
+    $template_name = $this->get_type('template', 'default');
+    $class = notifications_info('message templates', $template_name, 'class', 'Notifications_Template');
+    return new $class($this);
   }
   /**
    * Build template
@@ -211,6 +213,8 @@ class Notifications_Event extends Notifications_Entity {
     if (!empty($this->triggered)) {
       return FALSE;
     }
+    $template = $this->get_template();
+    dpm($template->build_message());
     // Notify other modules we are about to trigger some subscriptions event
     // Modules can do cleanup operations or modify event properties
     $this->triggered = REQUEST_TIME;
@@ -239,9 +243,10 @@ class Notifications_Event extends Notifications_Entity {
   function save() {
     // First of all, make sure we have a unique eid
     $this->record();
-    return $this->db_update('notifications_event')
+    return db_update('notifications_event')
       ->condition('eid', $this->eid)
-      ->fiels(array('data' => serialize($this)));
+      ->fields(array('data' => serialize($this)))
+      ->execute();
   }
 
   /**

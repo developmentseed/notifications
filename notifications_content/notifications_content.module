@@ -324,7 +324,7 @@ function notifications_content_notifications($op) {
       //   - Event Title2 by Author2
       $types['notifications-event-node-insert'] = array(
         'title' => t('Template for node posts'),
-        'class' => 'Notifications_Node_Event_Comment_Template',
+        'class' => 'Notifications_Node_Insert_Template',
       );
       // These other events are grouped for each node. The digest will look like:
       //   Story: Title of the story
@@ -332,11 +332,11 @@ function notifications_content_notifications($op) {
       //   - New comment by User: Comment title
       $types['notifications-event-node-update'] = array(
         'title' => t('Template for node updates'),
-        'class' => 'Notifications_Node_Event_Comment_Template',
+        'class' => 'Notifications_Node_Update_Template',
       );
       $types['notifications-event-node-comment'] = array(
         'title' => t('Template for node comments'),
-        'class' => 'Notifications_Node_Event_Comment_Template',
+        'class' => 'Notifications_Node_Comment_Template',
       );      
       return $types;
 
@@ -387,6 +387,7 @@ function notifications_content_action_info() {
  * @ingroup actions
  */
 function notifications_content_node_insert_action($node, $context = array()) {
+  $node = $context['node'];
   // Just for published nodes
   if (!empty($node->status)) {
     notifications_content_node_event('post', $node)->trigger();
@@ -399,9 +400,10 @@ function notifications_content_node_insert_action($node, $context = array()) {
  * @ingroup actions
  */
 function notifications_content_node_update_action($node, $context = array()) {
+  $node = $context['node'];
   // If not published before, send 'post' event, otherwhise, send 'update' event if published
   if (!empty($node->status)) {
-    if (empty($node->notifications_content_status)) {
+    if (empty($node->notifications_status)) {
       notifications_content_node_event('post', $node)->trigger();
     }
     else {

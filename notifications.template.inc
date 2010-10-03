@@ -75,7 +75,16 @@ class Notifications_Template {
     }
     return $objects;
   }
-
+  /**
+   * Get objects as Drupal objects (Removing Notifications object wrapper)
+   */
+  function drupal_objects() {
+    $objects = array();
+    foreach ($this->get_objects() as $type => $object) {
+      $objects[$type] = is_a($object, 'Notifications_Object') ? $object->get_object() : $object;
+    }
+    return $objects;
+  }
   /**
    * Render this as text
    */
@@ -85,10 +94,11 @@ class Notifications_Template {
   }
 
   /**
-   * Get standard message elements
+   * Get standard message elements prepared for drupal_render()
    */
   function build_message() {
     return array(
+      '#type' => 'messaging_message',
       'subject' => $this->build_parts(array('subject')),
       'body' => $this->build_parts(array('header', 'content', 'footer')) + array('#type' => 'messaging_body'),
     ); 
@@ -117,19 +127,19 @@ class Notifications_Template {
   /**
    * Build a message element
    */
-  function build_element($element) {
+  function build_element($element, $options = array()) {
     if (is_object($element)) {
       return $element->build();
     }
     elseif (is_string($element)) {
       // Strings may need token replacement
       return array(
-        '#markup' => $this->token_replace($element),
+        '#markup' => $this->token_replace($element, $options),
       );
     }
     elseif (is_array($element)) {
       foreach (element_children($element) as $key) {
-        $element[$key] = $this->build_element($element[$key]);
+        $element[$key] = $this->build_element($element[$key], $options);
       }
       return $element;
     }
@@ -138,12 +148,12 @@ class Notifications_Template {
   /**
    * Get element from elements or default texts
    */
-  function get_element($type) {
+  function get_element($type, $options = array()) {
     if (isset($this->elements[$type])) {
       return $this->elements[$type];
     }
     else {
-      return $this->get_text($type, $this->options);
+      return $this->get_text($type, $options);
     }
   }
   /**
@@ -176,25 +186,25 @@ class Notifications_Template {
   function default_text($type, $options) {
     switch ($type) {
       case 'subject':
-        return t('Notification for [user-name] from [site-name]', array(), $options);
+        return t('Notification for [user:name] from [site:name]', array(), $options);
       case 'header':
-        return t("Greetings [user-name],", array(), $options);
+        return t("Greetings [user:name],", array(), $options);
       case 'content':
         return t("A item to which you are subscribed has been updated", array(), $options);
       case 'footer':
         return array(
           '#type' => 'messaging_text',
-          'from' => t('This is an automatic message from [site-name]', array(), $options),
-          'subscriptions' => t('To manage your subscriptions, browse to [subscriptions-manage]', array(), $options),
-          'unsubscribe' => t('You can unsubscribe at [unsubscribe-url]', array(), $options),
+          'from' => t('This is an automatic message from [site:name]', array(), $options),
+          'subscriptions' => t('To manage your subscriptions, browse to [notifications:subscriptions-manage]', array(), $options),
+          'unsubscribe' => t('You can unsubscribe at [notifications:unsubscribe-url]', array(), $options),
         );
     }
   }
   /**
    * Do token replacement with this template's objects
    */
-  protected function token_replace($text) {
-    return token_replace($text, $this->get_objects());
+  protected function token_replace($text, $options = array()) {
+    return token_replace($text, $this->drupal_objects(), $options + $this->get_options());
   }
 }
 
