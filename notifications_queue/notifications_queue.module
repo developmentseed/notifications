@@ -1,0 +1,24 @@
+<?php
+// $Id: notifications.module,v 1.6.2.9.2.50.2.18.2.67 2010/07/22 11:57:49 jareyero Exp $
+
+/**
+ * @file
+ * Notifications - Advanced queue
+ */
+
+/**
+ * Entry point for the storage and queueing API
+ * 
+ * Default methods are implemented by Notifications_Queue class
+ * 
+ * This API can be replaced by setting a new class name in the 'notifications_queue' variable.
+ */
+function notifications_queue() {
+  static $queue;
+  if (!isset($queue)) {
+    $class = variable_get('notifications_queue', 'Notifications_Queue');
+    $queue = new $class();
+  }
+  //return call_user_func_array(array($class, $method), $args);
+  return $queue;
+}

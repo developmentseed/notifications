@@ -32,9 +32,11 @@ class Notifications_Event extends Notifications_Entity {
   public $counter = 0;
   // Objects for this event
   public $objects = array();
-  // Processing options, not saved
-  public $save = TRUE;
+  // Processing options, event to be queued
   public $queue = TRUE;
+  // Processing options, notifications to be sent immediately
+  public $send = TRUE;
+  // Whether this has already been queued
   public $queued = FALSE;
   // Will be set if any of the objects cannot be loaded
   public $incomplete = FALSE;
@@ -213,19 +215,26 @@ class Notifications_Event extends Notifications_Entity {
     if (!empty($this->triggered)) {
       return FALSE;
     }
+    /*
     $template = $this->get_template();
     dpm($template->build_message());
+    */
+    $this->send_all();
     // Notify other modules we are about to trigger some subscriptions event
     // Modules can do cleanup operations or modify event properties
     $this->triggered = REQUEST_TIME;
     $this->invoke_all('trigger');
-    // Store event, unles marked not to be saved 
-    if ($this->save) {    
-      return $this->save();
-    }
+
     // Send event to queue for subscriptions, unless marked not to
     if ($this->queue) {
       return $this->queue();
+    }
+    elseif ($this->send) {
+      return $this->send_all();
+    }
+    else {
+      // Not for queue nor for sending, just discard
+      return FALSE;
     }
   }
 
@@ -254,20 +263,23 @@ class Notifications_Event extends Notifications_Entity {
    */
   function queue() {
     // First of all, make sure we have a unique eid
+    $this->queued = REQUEST_TIME;
     $this->record();
-    $this->queued = TRUE;
-    $this->counter = notifications_queue()->queue_event($this);
-
+    // If advanced queue enabled, go for it. Otherwise, go for Drupal Queue
+    if (function_exists('notifications_queue')) {
+      $this->counter = notifications_queue()->queue_event($this);
+    }
+    else {
+      $queue = DrupalQueue::get('notifications_queue');
+      $queue->createItem($this); 
+    }
+    
     // Modules can do cleanup operations or modify the queue or the event counter
     $this->invoke_all('queued');
 
     // Now update event counter with rows in notifications_queue or delete if no rows
     if ($this->counter) {
       $this->update_counter();
-      // If immediate sending enabled, store it for sending on page exit.
-      if (variable_get('notifications_send_immediate', 0)) {
-        Notifications_Event_Tracker::send_immediate($this);
-      }
     }
     else {
       $this->delete();
@@ -434,6 +446,55 @@ class Notifications_Event extends Notifications_Entity {
    */
   public static function process_immediate() {
     return Notifications_Event_Tracker::process_immediate();
+  }
+  
+  /**
+   * Send to all queued subscriptions
+   */
+  public function send_all() {
+    $sids = $this->query_subscriptions()
+    ->fields('s', array('sid'))
+    ->execute()
+    ->fetchCol();
+    if ($sids) {
+      $subscriptions = entity_load('notifications_subscription', $sids);
+      return $this->send_list($subscriptions);
+    }
+  }
+  /**
+   * Send to subscriptors
+   * 
+   * @param $subscriptions
+   *   List of subscriptions to send to
+   */
+  public function send_list($subscriptions) {
+    // Template to be rendered for each user
+    $template = $this->get_template();
+    // Keep track of users sent so we don't repeat
+    $sent = $results = array();
+    foreach ($subscriptions as $subscription) {
+      $user = $subscription->get_user();
+      if (in_array($user->uid, $sent)) continue;
+      if ($this->user_access($user)) {
+        $template->add_object('user', $user);     
+        $message = $template->build_message()
+          ->set_method($subscription->send_method);
+        $message->set_user($user);
+        $results[] = $result = $message->send();
+        if ($result) {
+          $sent[] = $user->uid;
+        }
+      }
+      else {
+        // User doesn't have access, mark as sent so we don't try again
+        $sent[] = $user->uid;
+        $results[] = FALSE;
+      }
+    }
+    $count = count($results);
+    $success = count(array_filter($results));
+    watchdog('notifications', 'Sent @count notifications: @success success, @errors errors', array('@count' => $count, '@success' => $success, '@errors' => $count - $success));
+    return $success;
   }
 }
 

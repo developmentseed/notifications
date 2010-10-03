@@ -643,7 +643,9 @@ function notifications_user_setting($name, $account = NULL, $default = NULL) {
  *   Array of event objects (type => $object)
  */
 function notifications_event($type, $action) {
-  return Notifications_Event::build_type($type, $action);
+  $event =  Notifications_Event::build_type($type, $action);
+  $event->queue = !variable_get('notifications_send_immediate', 0);
+  return $event;
 }
 
 /**
@@ -663,19 +665,6 @@ function notifications_event_enabled($key, $default = TRUE) {
   }
   else {
     return $status;
-  }
-}
-
-/**
- * Implementation of hook_exit()
- * 
- * This is where the immediate sending is done if enabled, so we are sure all other modules
- * have finished node processing when node update.
- */
-function notifications_exit() {
-  // We don't load the function if not loaded, which means no events were triggered
-  if (class_exists('Notifications_Event', FALSE)) {
-    Notifications_Event::process_immediate();
   }
 }
 
@@ -1083,23 +1072,6 @@ function notifications_option_array_set($name, $property, $values) {
     $array[$property] = $value;
     notifications_option_set($name . '_' . $type, $array);
   }
-}
-
-/**
- * Entry point for the storage and queueing API
- * 
- * Default methods are implemented by Notifications_Queue class
- * 
- * This API can be replaced by setting a new class name in the 'notifications_queue' variable.
- */
-function notifications_queue() {
-  static $queue;
-  if (!isset($queue)) {
-    $class = variable_get('notifications_queue', 'Notifications_Queue');
-    $queue = new $class();
-  }
-  //return call_user_func_array(array($class, $method), $args);
-  return $queue;
 }
 
 /**

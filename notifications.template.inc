@@ -94,14 +94,15 @@ class Notifications_Template {
   }
 
   /**
-   * Get standard message elements prepared for drupal_render()
+   * Get Message_Object with subject and body parts
    */
   function build_message() {
-    return array(
-      '#type' => 'messaging_message',
-      'subject' => $this->build_parts(array('subject')),
-      'body' => $this->build_parts(array('header', 'content', 'footer')) + array('#type' => 'messaging_body'),
-    ); 
+    $message = new Messaging_Message();
+    $subject = reset($this->build_parts(array('subject')));
+    $body = $this->build_parts(array('header', 'content', 'footer')) + array('#type' => 'messaging_body');
+    $message->set_element('subject', $subject);
+    $message->set_element('body', $body);
+    return $message;
   }
   /**
    * Build all elements
