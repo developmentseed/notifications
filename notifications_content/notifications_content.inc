@@ -40,7 +40,15 @@ class Notifications_Node_Type_Author_Subscription extends Notifications_Subscrip
  * Node events
  */
 class Notifications_Node_Event extends Notifications_Event {
- 
+  /**
+   * Set main object id when node is added to the event
+   */
+  public function set_object($object) {
+    if ($object->type == 'node') {
+      $this->oid = $object->get_value();
+    }
+    return parent::set_object($object);
+  }
   /**
    * Get node object
    */
@@ -52,8 +60,10 @@ class Notifications_Node_Event extends Notifications_Event {
    */
   public function trigger() {
     $node = $this->get_node();
-    parent::trigger();
-    watchdog('action', 'Triggered notifications for  @type %title..', array('@type' => node_type_get_name($node), '%title' => $node->title));
+    if ($result = parent::trigger()) {
+      watchdog('action', 'Triggered notifications for  @type %title..', array('@type' => node_type_get_name($node), '%title' => $node->title));
+    }
+    return $result;
   }
 }
 
@@ -112,6 +122,9 @@ class Notifications_Node_Type extends Notifications_Object {
   }  
 }
 
+/**
+ * Node type field
+ */
 class Notifications_Node_Type_Field extends Notifications_Field_Select {
   public $type = 'node:type';
   
@@ -125,7 +138,7 @@ class Notifications_Node_Type_Field extends Notifications_Field_Select {
    * Select options, content type list
    */
   public function select_options () {
-    
+    return node_type_get_names();
   }
 }
   
@@ -153,7 +166,27 @@ class Notifications_Node_Comment_Event extends Notifications_Node_Event {
  * Message templates for node events. Base class.
  */
 class Notifications_Node_Event_Template extends Notifications_Template {
-
+  /**
+   * Default texts for this template, may need token replacement
+   */
+  function default_text($type, $options) {
+    switch ($type) {
+      case 'subject':
+        return t('Update for [type-name]: [title]', array(), $options);
+      case 'content':
+        return array(
+          'teaser' => '[node-teaser]',
+          'more' => t('Read more [node-url]', array(), $options),
+        );
+      case 'digest':
+        return array(
+          'title' => '[title]',
+          'more' =>t('Read more [node-url]', array(), $options),
+        );
+      default:
+        return parent::default_text($type, $options);
+    }
+  }
 }
 
 /**
@@ -164,11 +197,30 @@ class Notifications_Node_Insert_Template extends Notifications_Node_Event_Templa
     return t('Template for node posts');
   }  
   public function digest_fields() {
-    return array('node:nid', 'node:type');
+    return array('node:type', 'author:uid');
   }
-  public function digest_line() {
-    return t('[type-name] [title] by [author-name]');
-  }  
+  /**
+   * New nodes can be digested by type or by author
+   */
+  public function digest_line($field, $options = array()) {
+    switch ($field) {
+      case 'node:type':
+        return t('[title] by [author-name].', array(), $options);
+      case 'author:uid':
+        return t('New [type-name]: [node-title]', array(), $options);
+    }
+  }
+    /**
+   * Default texts for this template, may need token replacement
+   */
+  function default_text($type, $options) {
+    switch ($type) {
+      case 'subject':
+        return t('New [type-name]: [node-title]', array(), $options);
+      default:
+        return parent::default_text($type, $options);
+    }
+  }
 }
 
 /**
@@ -181,8 +233,13 @@ class Notifications_Node_Update_Template extends Notifications_Node_Event_Templa
   public function digest_fields() {
     return array('node:nid', 'author:uid');
   }
-  public function digest_line() {
-    t('The [type-name] has been updated by [author-name]');
+  public function digest_line($field, $options = array()) {
+    switch ($field) {
+      case 'node:nid':
+        return t('The [type-name] has been updated by [author-name]', array(), $options);
+      case 'author:uid':
+        return t('Updated [type-name]: [node-title]', array(), $options);
+    }    
   }  
 }
 
@@ -196,11 +253,34 @@ class Notifications_Node_Comment_Template extends Notifications_Node_Event_Templ
   public function digest_fields() {
     return array('node:nid');
   }
-  public function digest_line() {
-    return t('New comment by [comment-author-name]: [comment-title]');
-  }  
+  public function digest_line($field, $options = array()) {
+    switch ($field) {
+      case 'node:nid':
+        return t('New comment by [comment-author-name]: [comment-title]', array(), $options);
+      case 'author:uid':
+        return t('Commented on [type-name]: [node-title]', array(), $options);
+    }  
+  }
+  /**
+   * Default texts for this template, may need token replacement
+   */
+  function default_text($type, $options) {
+    switch ($type) {
+      case 'subject':
+        return t('Comment for [type-name]: [title]', array(), $options);
+      case 'content':
+        return array(
+          'header' => t('Comment by [comment-author-name]: [comment-title]', array(), $options),
+          'content' => '[comment-body]',
+          'footer' => t('Read more [comment-url]', array(), $options),
+        );
+      case 'digest':
+        return array(
+          'title' => '[title]',
+          'more' =>t('Read more [node-url]', array(), $options),
+        );
+      default:
+        return parent::default_text($type, $options);
+    }
+  }
 }
-
-/**
- * 
- */

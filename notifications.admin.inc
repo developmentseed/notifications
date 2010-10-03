@@ -237,7 +237,7 @@ function notifications_send_intervals_form($form, &$form_state) {
     '#default_value' => $time_index[variable_get('notifications_default_send_interval', 0)],
   );
 
-  $form['submit'] = array('#type' => 'submit', '#value' => t('Update'));
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Save configuration'));
   $form['reset'] = array('#type' => 'submit', '#value' => t('Reset to defaults'));
 
   return $form;
@@ -418,37 +418,33 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
  * 
  * Will allow to define which events trigger a notification and which ones not
  */
-function notifications_admin_events_form() {
-  $form = array();
+function notifications_admin_events_form($form, &$form_state) {
   // Compile array from plug-ins and settings
   $event_list = notifications_event_type();
   $template_list = notifications_info('message templates', NULL, 'title');
 
   $header = array(
-    'event' => t('Event type'),
+    'name' => t('Event type'),
     'template' => t('Template'),
     'triggers' => t('Triggers'),
   );
-  $options = array();
-  foreach (notifications_event_type() as $type => $event) {
-    $options[$type] = array(
-      'event' => $event['title'],
-      'template' => array(
-        'data' => array(
-          '#type' => 'select',
-          '#options' => $template_list,
-          '#default_value' => $event['template'],
-        )
-      ),
-      'triggers' => implode(', ', notifications_admin_event_triggers($type)),
-    );
-  }
   $form['events'] = array(
-    '#theme' => 'table',
+    '#tree' => TRUE,
+    '#type' => 'fieldset',
+    '#theme' => 'notifications_admin_table_form',
     '#header' => $header,
-    '#rows' => $options,
     '#empty' => t('You need to enable some plug-ins to provide notifications events.'),
   );
+  foreach (notifications_event_type() as $type => $event) {
+    $form['events']['name'][$type]['#markup'] = $event['title'];
+    $form['events']['template'][$type] = array(
+      '#type' => 'select',
+      '#options' => $template_list,
+      '#default_value' => $event['template'],
+    );
+    $form['events']['triggers'][$type]['#markup'] = implode(', ', notifications_admin_event_triggers($type));
+  }
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Save configuration'));
   return $form; 
 }
 
@@ -462,13 +458,13 @@ function notifications_admin_event_triggers($type) {
   if (!isset($action_info)) {
     $action_info = module_invoke_all('action_info');
     // We need to index trigger info by actual trigger key
-    foreach (module_invoke_all('trigger_info') as $type => $type_info) {
+    foreach (module_invoke_all('trigger_info') as $trigger_type => $type_info) {
       foreach ($type_info as $key => $key_info) {
         $trigger_info[$key] = $key_info;
       }
     }
   }
-  $event_triggers = array(); 
+  $event_triggers = array();
   $event_actions = notifications_event_type($type, 'actions', array());
   foreach ($event_actions as $action) {
     foreach ($action_info[$action]['triggers'] as $trigger) {

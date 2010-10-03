@@ -5,9 +5,14 @@
  * Drupal Notifications Framework - Default class file
  */
 
-
 /**
  * Notifications Event class
+ * 
+ * This is the object that when triggered will produce notifications to be sent.
+ * 
+ * Each event type can have a linked template that will be the object responsible for building the notification text
+ * 
+ * @see hook_notifications('event types')
  */
 class Notifications_Event extends Notifications_Entity {
   // Object unique id
@@ -18,7 +23,7 @@ class Notifications_Event extends Notifications_Entity {
   public $action = '';
   // Event key that will define event behavior
   public $typekey;
-  // Main object id
+  // Main object id. I.e. if a node event it will be nid
   public $oid;
   // Time the event was produced
   public $created;
@@ -37,18 +42,14 @@ class Notifications_Event extends Notifications_Entity {
   public $text;
   // Template to use for this event
   protected $template;
-  // Temporary storage for digesting information
-  public $digest;
   // Temporary cache, user access to event
   protected $_access;
-  // Shared template map for all events
-  protected static $_templates;
 
   /**
    * Constructor
    */
-  function __construct($template = NULL) {
-    parent::__construct($template);
+  function __construct($object = NULL) {
+    parent::__construct($object);
     if (!isset($this->created)) {
       $this->created = time();
     }
@@ -68,11 +69,12 @@ class Notifications_Event extends Notifications_Entity {
    */
   public static function build_type($type, $action) {
     if ($class = self::type_info($type . '-' . $action, 'class')) {
-      return new $class();
+      return new $class(self::type_info($type));
     }
     else {
       $class = self::type_info($type, 'class', 'Notifications_Event');
-      return new $class(array('type' => $type, 'action' => $action));
+      // For this case $type and $action may override default type info 
+      return new $class(array('type' => $type, 'action' => $action) + self::type_info());
     }
   }
   /**
@@ -129,29 +131,28 @@ class Notifications_Event extends Notifications_Entity {
   /**
    * Get message template to build this event as text
    * 
-   * The value will be taken from this event's defaults, but can be overriden on hook_notifications('event types')
-   * 
-   * @param $type
-   *   Template type: 'message', 'line', 'content', etc...
+   * The difference with create template is that this one keeps the template with the event so it can be reused
    */
-  function get_template($type) {
-    $defaults = $this->default_templates();
-    $class = $this->get_type($type . '_template', $defaults[$type]);
-    return new $class($this);
+  function get_template() {
+    if (!isset($this->template)) {
+      $this->template = $this->create_template();
+    }
+    return $this->template;
   }
-
+  /**
+   * Create message template to build this event as text
+   * 
+   * The value will be taken from this event's defaults, but can be overriden on hook_notifications('event types')
+   */
+  function create_template() {
+    $class = $this->get_type('template', 'class', 'Notifications_Template');
+    $this->template = new $class($this);
+  }
   /**
    * Build template
    */
   function build_template() {
-    if ($template = self::template_map($this->typekey)) {
-      $this->template = $template;
-    }
-    else {
-      // Build default that will be like notifications-event-type-action
-      $parts = array($this->module, 'event', $this->type, $this->action);
-      $this->template = implode('-', array_filter($parts));
-    }   
+    return $this->get_template()->build();
   }
   
   /**
@@ -161,27 +162,12 @@ class Notifications_Event extends Notifications_Entity {
     if (isset($this->text[$key])) {
       return $this->text[$key];
     }
-    elseif (isset($this->params['text'][$key])) {
-      return $this->params['text'][$key];
-    }
   }
 
   /**
-   * Get set event object
-   */
-  function object($type, $object = NULL) {
-    if (isset($object)) {
-      $this->add_object($type, $object);
-    }
-    else {
-      $this->load_objects();
-      return isset($this->objects[$type]) ? $this->objects[$type] : NULL;
-    }
-  }
-  /**
-   * Add Notifications Object
+   * Add Drupal Object, converting it into a Notifications_Object
    *
-   * @param $object Notifications_Object
+   * @param $object
    */
   function add_object($type, $value) {
     return $this->set_object(notifications_object($type, $value));
@@ -384,17 +370,6 @@ class Notifications_Event extends Notifications_Entity {
       return $event;
     }    
   }
-  /**
-   * Get default templates for this event
-   */
-  function default_templates() {
-    return array(
-      'message' => 'Notifications_Message_Template',
-      'body' => 'Notifications_Message_Body',
-      'content' => 'Notifications_Message_Content',
-      
-    );
-  }
 
   /**
    * Build query for subscriptions that match this event type
@@ -445,7 +420,7 @@ class Notifications_Event extends Notifications_Entity {
    * Invoke all hook_notifications_event()
    */
   function invoke_all($op) {
-    return module_invoke_all($op, $this);
+    return module_invoke_all('notifications_event', $op, $this);
   }
   /**
    * Process events stored for immediate sending

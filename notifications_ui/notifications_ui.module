@@ -366,7 +366,7 @@ function notifications_ui_node_options($type = NULL, $option = NULL) {
  */
 function notifications_ui_user_access($account = NULL) {
   $account = $account ? $account : $GLOBALS['user'];
-  return notifications_access_subscribe($account);
+  return user_access('create subscriptions', $account);
 }
 
 /**

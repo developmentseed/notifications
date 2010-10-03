@@ -9,14 +9,29 @@
  * Base template class
  */
 class Notifications_Template {
+  // Current template elements, renderable
   public $elements = array();
+  // Template text, to override defaults
+  protected $text = array();
   // Store multiple object types
   protected $objects = array();
   protected $events = array();
+  
   protected $subscriptions = array();
+  // Options for string replacement
+  protected $options;
   // Parent template
   protected $parent;
   
+  /**
+   * Constructor, from notifications event
+   */
+  public function __construct($event = NULL) {
+    if ($event) {
+      $this->objects = $event->get_objects();
+      $this->objects['event'] = $event;
+    }
+  }
   /**
    * Add object to the list
    */
@@ -30,10 +45,10 @@ class Notifications_Template {
     $this->elements[$name] = $element;
   }
   /**
-   * Add template
+   * Add template object
    */
-  function add_template($name, $template = NULL) {
-    $template->parent = $this;
+  function add_template($name, $template) {
+    $template->set_parent($this);
     $this->elements[$name] = $template;
   }
   /**
@@ -44,36 +59,142 @@ class Notifications_Template {
     $this->add_template('event:' . $event->eid, $event->get_template());
   }
   /**
-   * Build text elements
+   * Set parent template (and add objects from the parent)
    */
-  function build() {
-    
+  function set_parent($template) {
+    $this->parent = $template;
+    $this->objects += $template->get_objects();
   }
   /**
-   * Prepare this template for rendering
+   * Get objects from this template (include parent's ones)
    */
-  function prepare() {
-    
+  function get_objects() {
+    $objects = $this->objects;
+    if (isset($this->parent)) {
+      $objects += $this->parent->get_objects();
+    }
+    return $objects;
   }
+
   /**
    * Render this as text
    */
-  function render($elements = NULL) {
-    $this->build();
-    $this->render = drupal_render($this->elements);
-    $this->text = $this->token_replace($this->render);
+  function render() {
+    $elements = $this->build() + array('#type' => 'messaging_template');
+    return drupal_render($this->elements);
+  }
+
+  /**
+   * Get standard message elements
+   */
+  function build_message() {
+    return array(
+      'subject' => $this->build_parts(array('subject')),
+      'body' => $this->build_parts(array('header', 'content', 'footer')) + array('#type' => 'messaging_body'),
+    ); 
   }
   /**
-   * Render this template's elements
+   * Build all elements
    */
-  function get_text() {
-    $this->elements;
+  function build() {
+    return $this->build_parts(array_keys($this->elements));
   }
   /**
-   * Build message object
+   * Get multiple built elements
+   * 
+   * @param $key1, $key2, $key3..
    */
-  function get_message() {
-    return messaging_message_build($this);
+  function build_parts($parts) {
+    $elements = array();
+    foreach ($parts as $key) {
+      if ($text = $this->get_element($key)) {
+        $elements[$key] = $this->build_element($text);
+      }
+    }
+    return $elements;
+  }
+
+  /**
+   * Build a message element
+   */
+  function build_element($element) {
+    if (is_object($element)) {
+      return $element->build();
+    }
+    elseif (is_string($element)) {
+      // Strings may need token replacement
+      return array(
+        '#markup' => $this->token_replace($element),
+      );
+    }
+    elseif (is_array($element)) {
+      foreach (element_children($element) as $key) {
+        $element[$key] = $this->build_element($element[$key]);
+      }
+      return $element;
+    }
+  }
+
+  /**
+   * Get element from elements or default texts
+   */
+  function get_element($type) {
+    if (isset($this->elements[$type])) {
+      return $this->elements[$type];
+    }
+    else {
+      return $this->get_text($type, $this->options);
+    }
+  }
+  /**
+   * Get text element from this template
+   */
+  function get_text($type, $options = array()) {
+    if (isset($this->text[$type])) {
+      return $this->text[$type];
+    }
+    else {
+      $options += $this->get_options();
+      return $this->default_text($type, $options);
+    }
+  }
+  /**
+   * Get options for texts, translations, etc
+   */
+  function get_options() {
+    if (!isset($this->options)) {
+      $this->options = array(
+        'language' => language_default(),
+        'langcode' => language_default()->language,
+      );
+    }
+    return $this->options;
+  }
+  /**
+   * Default texts for this template, may need token replacement
+   */
+  function default_text($type, $options) {
+    switch ($type) {
+      case 'subject':
+        return t('Notification for [user-name] from [site-name]', array(), $options);
+      case 'header':
+        return t("Greetings [user-name],", array(), $options);
+      case 'content':
+        return t("A item to which you are subscribed has been updated", array(), $options);
+      case 'footer':
+        return array(
+          '#type' => 'messaging_text',
+          'from' => t('This is an automatic message from [site-name]', array(), $options),
+          'subscriptions' => t('To manage your subscriptions, browse to [subscriptions-manage]', array(), $options),
+          'unsubscribe' => t('You can unsubscribe at [unsubscribe-url]', array(), $options),
+        );
+    }
+  }
+  /**
+   * Do token replacement with this template's objects
+   */
+  protected function token_replace($text) {
+    return token_replace($text, $this->get_objects());
   }
 }
 
