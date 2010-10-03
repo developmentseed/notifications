@@ -1266,3 +1266,22 @@ function notifications_url_signature($path, $query = array()) {
   $string = $query ? notifications_array_serialize($query) : 'none'; 
   return md5('notifications' . drupal_get_private_key() .':' . $path . ':' . $string); 
 }
+
+/**
+ * Implementation of hook_cron_queue_info()
+ */
+function notifications_cron_queue_info() {
+  return array(
+    'notifications_event' => array(
+      'worker callback' => 'notifications_cron_queue_event_worker',
+      'time' => 60,
+  ));
+}
+
+/**
+ * Worker callback. Check whether the message has expired before sending out.
+ */
+function notifications_cron_queue_event_worker($event) {
+  $event->send_all();
+  $event->delete();
+}

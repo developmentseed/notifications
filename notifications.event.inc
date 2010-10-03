@@ -270,7 +270,7 @@ class Notifications_Event extends Notifications_Entity {
       $this->counter = notifications_queue()->queue_event($this);
     }
     else {
-      $queue = DrupalQueue::get('notifications_queue');
+      $queue = DrupalQueue::get('notifications_event');
       $queue->createItem($this); 
     }
     
@@ -502,8 +502,6 @@ class Notifications_Event extends Notifications_Entity {
  * Event tracker
  */
 class Notifications_Event_Tracker {
-  // Track events for immediate sending
-  protected static $_send_immediate;
   // Track events for queue processing
   protected static $_event_tracker;
 
@@ -537,31 +535,4 @@ class Notifications_Event_Tracker {
   static function reset() {
     self::$_event_tracker = array();    
   }
-  /**
-   * Store / return events for immediate sending
-   */
-  public static function send_immediate($event = NULL) {
-    if ($event) {
-      // Store events anyway so they can be accessed through the static variable
-      // and other modules can have a peek on what has happened on this request
-      self::$_send_immediate[$event->eid] = $event;
-    }
-    elseif (!empty(self::$_send_immediate)) {
-      return self::$_send_immediate;
-    }
-  }
-  
-  /**
-   * Process events stored for immediate sending
-   * 
-   * This will be called from notifications_exit() when the event API is loaded
-   */
-  public static function process_immediate() {
-    if ($events = self::send_immediate()) {
-      foreach ($events as $event) {
-        notifications_queue()->process_rows(array('cron' => 1, 'eid' => $event->eid, 'send_interval' => 0));
-      }    
-    }
-  }
-
 }
