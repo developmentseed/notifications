@@ -23,6 +23,8 @@ class Notifications_Event extends Notifications_Entity {
   public $action = '';
   // Event key that will define event behavior
   public $typekey;
+  // User who produced the event
+  public $uid = 0;
   // Main object id. I.e. if a node event it will be nid
   public $oid;
   // Time the event was produced
@@ -64,6 +66,9 @@ class Notifications_Event extends Notifications_Entity {
    */
   public static function build_object($object) {
     $class = self::type_info($object->typekey, 'class', 'Notifications_Event');
+    if (!empty($object->data)) {
+      drupal_unpack($object);
+    }
     return new $class($object);
   }
   /**
@@ -405,6 +410,10 @@ class Notifications_Event extends Notifications_Entity {
         $query->condition('type', $types);
       }
     }
+    // Maybe we don't need to notify the user who produced this
+    if ($this->uid && !variable_get('notifications_sendself', 1)) {
+      $query->condition('s.uid', $this->uid, '<>');
+    }
     return $query;
   }
 
@@ -449,7 +458,7 @@ class Notifications_Event extends Notifications_Entity {
   }
   
   /**
-   * Send to all queued subscriptions
+   * Send message to all subscriptions
    */
   public function send_all() {
     $sids = $this->query_subscriptions()

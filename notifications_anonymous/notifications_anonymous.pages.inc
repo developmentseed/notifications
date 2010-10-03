@@ -119,7 +119,7 @@ function notifications_anonymous_admin_settings_form() {
   $form['notifications_anonymous_send_intervals'] = array(
     '#title' => t('Allowed send intervals'),
     '#type' => 'checkboxes',
-    '#options' => _notifications_send_intervals(),
+    '#options' => notifications_send_intervals(),
     '#default_value' => variable_get('notifications_anonymous_send_intervals', array(0)),  
   );
   // We cannot use form filter because of inmediate send interval is always filtered out

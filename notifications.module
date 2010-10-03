@@ -71,14 +71,6 @@ function notifications_menu() {
     'weight' => -10,
     'type' => MENU_DEFAULT_LOCAL_TASK,
   );
-  $items['admin/config/notifications/settings/intervals'] = array(
-    'title' => 'Intervals',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_send_intervals_form'),
-    'type' => MENU_LOCAL_TASK,
-    'access arguments' => array('administer site configuration'),
-    'file' => 'notifications.admin.inc',
-  );
   $items['admin/config/notifications/settings/events'] = array(
     'title' => 'Events',
     'page callback' => 'drupal_get_form',
@@ -402,21 +394,6 @@ function notifications_notifications($op) {
 }
 
 /**
- * Implementation of hook_cron()
- */
-function notifications_cron() {
-  if (variable_get('notifications_process_on_cron', TRUE)) {
-    $results = notifications_queue()
-      ->default_process()
-      ->cron()
-      ->get_results();
-    if ($results) {
-      watchdog('notifications', 'Processed notifications in queue: @rows rows, @messages messages sent, @time milliseconds.', $results);
-    }
-  }
-}
-
-/**
  * Get information about event types. Invoking this function will also load the event API
  * 
  * @param $typekey
@@ -644,7 +621,7 @@ function notifications_user_setting($name, $account = NULL, $default = NULL) {
  */
 function notifications_event($type, $action) {
   $event =  Notifications_Event::build_type($type, $action);
-  $event->queue = !variable_get('notifications_send_immediate', 0);
+  $event->queue = variable_get('notifications_event_queue', 0);
   return $event;
 }
 
@@ -1075,40 +1052,18 @@ function notifications_option_array_set($name, $property, $values) {
 }
 
 /**
- * List of send intervals, translated.
+ * List of send intervals, only Immediately if no advanced queue enabled
  */
 function notifications_send_intervals($account = NULL) {
-  $list = &drupal_static(__FUNCTION__);
-  if ($account && !$account->uid && function_exists('notifications_anonymous_send_intervals')) {
-    return notifications_anonymous_send_intervals();
+  if (function_exists('notifications_queue_send_intervals')) {
+    return notifications_queue_send_intervals($account);
   }
-  if (!isset($intervals)) {
-    if ($intervals = variable_get('notifications_send_intervals', FALSE)) {
-      foreach ($intervals as $key => $name) {
-        $list[$key] = notifications_translate("send_interval:$key:name", $name);
-      }
-    }
-    else {
-      $list = _notifications_send_intervals();
-    }
+  else {
+    return array(0 => t('Immediately'));
   }
-  return $list;
 }
 
-/**
- * List of send intervals. These may be overriden in a variable.
- */
-function _notifications_send_intervals() {
-  return variable_get('notifications_send_intervals', array(
-      // -1 => t('Never'),
-      0 => t('Immediately'),
-      3600 => t('Every hour'),
-      43200 => t('Twice a day'),
-      86400 => t('Daily'),
-      604800 => t('Weekly'),  
-    )
-  );
-}
+
 
 /**
  * Get list of send methods for user or anonymous account

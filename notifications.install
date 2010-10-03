@@ -148,3 +148,5 @@ function notifications_uninstall() {
  * Update from 6.x to 7.x
  */
 // Rename table: notifications to notifications_subscription
+// Moved table notifications_queue and notifications_sent to notifications_queue module
+// Option 'notifications_send_immediate' converted into 'notifications_event_queue'

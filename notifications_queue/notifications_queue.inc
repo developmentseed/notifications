@@ -278,7 +278,7 @@ class Notifications_Queue implements DrupalReliableQueueInterface {
 
     $count = 0;
     $stop = FALSE;
-    $send_intervals = _notifications_send_intervals();
+    $send_intervals = _notifications_queue_send_intervals();
     unset($send_intervals[-1]);
     
     if ($max_sqid = $this->process_prepare()) {

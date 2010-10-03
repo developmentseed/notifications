@@ -5,6 +5,6 @@ package = "Notifications"
 version = VERSION
 core = 7.x
 dependencies[] = notifications
-files[] = 'notifications.queue.inc'
+files[] = 'notifications_queue.inc'
 
 
