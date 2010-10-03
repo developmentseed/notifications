@@ -117,6 +117,7 @@ function notifications_menu() {
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'access arguments' => array('administer notifications'),
   );
+  /* @todo d7update
   $items['admin/notifications/status'] = array(
     'title' => 'Status',
     'description' => 'Summary of existing subscriptions.',
@@ -125,6 +126,7 @@ function notifications_menu() {
     'file' => 'notifications.admin.inc',
     'type' => MENU_LOCAL_TASK,
   );
+  */
   // Subscribe links. For this items access will be checked later in the page
   $items['notifications/subscribe/%notifications_subscription_type'] = array(
     'title' => 'Subscribe',
@@ -144,7 +146,6 @@ function notifications_menu() {
     'access callback' => TRUE,
     'file' => 'notifications.pages.inc',
   );
-  return $items;
   // Edit subscription, stand alone page
   $items['notifications/subscription/%notifications_subscription'] = array(
     'type' => MENU_CALLBACK,
@@ -455,6 +456,15 @@ function notifications_subscription_type($type = NULL, $property = NULL, $defaul
 }
 
 /**
+ * Get list of subscription type names
+ * 
+ * @todo Filter by user account permissions
+ */
+function notifications_subscritpion_type_list($account = NULL) {
+  $list = notifications_subscription_type(NULL, 'title');
+  return $list;
+}
+/**
  * Load subscription type for menu operations
  */
 function notifications_subscription_type_load($type) {
@@ -466,10 +476,9 @@ function notifications_subscription_type_load($type) {
 function notifications_subscription_user_types($account = NULL) {
   $account = $account ? $account : $GLOBALS['user'];
   $types = array();
-  foreach (notifications_subscription_enabled_types() as $type => $info) {
-    $subscription = notifications_subscription($type);
-    if ($subscription->user_access($account)) {
-      $types[$type] = $subscription;
+  foreach (notifications_subscription_enabled_types() as $type => $substype) {
+    if ($substype->user_access($account)) {
+      $types[$type] = $substype;
     }
   }
   return $types;

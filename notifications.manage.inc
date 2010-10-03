@@ -6,28 +6,27 @@
  *   Common functions for bulk management of subscriptions
  */
 
-
 /**
- * Check access for current user to manage subscriptions
+ * Check access for current user to manage multiple subscriptions
  * 
  * @param $sids
  *   Array of subscription ids
  */
 function notifications_manage_subscriptions_access($sids) {
-  global $user;
-  
   if (user_access('administer notifications') || user_access('manage all subscriptions')) {
     return TRUE;
   }
   else {
-    $params = array_merge(array($user->uid), array_values($sids));
-    $count = db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = %d AND sid IN (" . db_placeholders($sids) . ')', $params));
+    $count = db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = :uid AND sid IN (:sid)" , array(
+      ':uid' => $GLOBALS['user']->uid,
+      ':sid' => $sids
+    ))->fetchField();
     return $count == count($sids);
   }
 } 
 
 /**
- * Administer user subscriptions
+ * Administer subscriptions. For user tabs and admin tabs
  * 
  * @param $conditions
  *   Filter conditions. I.e. for user administering its own subscriptions, we'll have an 'uid' condition
@@ -43,11 +42,12 @@ function notifications_manage_subscriptions_form($conditions = array()) {
   $drupal_destination = drupal_get_destination();
   // This is the full options subsform
   $form = notifications_manage_subscriptions_form_options($admin_access);
+  // Depending on the context (user, admin) we'll have a different base path for the operation links
+  $base_path = $account ? 'user/'. $account->uid .'/notifications/subscription' : 'notifications/subscription';
 
   // Build the sortable table header.
   $header = array(
     'sid' => array('data' => t('Id'), 'field' => 's.sid'),
-    'title' => t('Title'),
     'type' => array('data' => t('Type'), 'field' => 's.type'),
     'status' => array('data' => t('Status'), 'field' => 's.status'),
     'name' => t('Description'),
@@ -63,7 +63,8 @@ function notifications_manage_subscriptions_form($conditions = array()) {
   if (count($send_intervals) > 1) {
     $header['send_interval'] = array('data' => t('Send interval'), 'field' => 's.send_interval');
   }
-
+  $header['operations'] = array('data' => t('Operations'));
+  
   // Query data with $conditions and filters
   $query = db_select('notifications_subscription', 's')->extend('PagerDefault')->extend('TableSort');
   foreach ($conditions as $field => $value) {
@@ -81,14 +82,14 @@ function notifications_manage_subscriptions_form($conditions = array()) {
   
   foreach ($subscriptions as $subs) {
     $options[$subs->sid] = array(
-      'sid' => $subs->sid,
-      'title' => array(
+      'sid' => array(
         'data' => array(
           '#type' => 'link',
-          '#title' => $subs->get_title(),
-          '#href' => 'notifications/subscription/' . $subs->sid,
+          '#title' => $subs->sid,
+          '#href' => $base_path . '/' . $subs->sid,
         ),
       ),
+      'title' =>  $subs->get_title(),
       'name' => $subs->get_name(),
       'type' => $type_list[$subs->type],
       'status' => $status_list[$subs->status],
@@ -117,16 +118,13 @@ function notifications_manage_subscriptions_form($conditions = array()) {
   $operations = array();
   $operations['edit'] = array(
     'title' => t('edit'),
-    'href' => $account ?
-      'user/'. $account->uid .'/notifications/subscriptions/edit/' . $subs->sid : 
-      'notifications/subscription/' . $subs->sid,
+    'href' =>  $base_path . '/' . $subs->sid . '/edit',
     'query' => $drupal_destination,
   );
+
   $operations['delete'] = array(
     'title' => t('delete'),
-    'href' => $account ? 
-      'user/'. $account->uid .'/notifications/subscriptions/delete/' . $subs->sid :
-      'notifications/unsubscribe/sid/' . $subs->sid,
+    'href' => $base_path . '/' . $subs->sid . '/delete',
     'query' => $drupal_destination,
   );
   if (count($operations) > 1) {
