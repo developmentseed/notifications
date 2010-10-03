@@ -632,21 +632,18 @@ function notifications_user_setting($name, $account = NULL, $default = NULL) {
 }
 
 /**
- * Pass on event to queue processing and run it to the end
+ * Create event object of given type
  * 
- * @param $event
+ * Usage:
+ *   notifications_event('node-insert', array('node' => $node))->trigger();
+ *   
+ * @param $type
  *   Array with event parameters
  * @param $objects
  *   Array of event objects (type => $object)
  */
-function notifications_event($event, $objects = array()) {
-  if (is_array($event)) {
-    $event = Notifications_Event::create($event, $objects);
-  }
-  if ($event->save || $event->queue) {
-    $event->trigger();   
-  }
-  return $event;
+function notifications_event($type, $action) {
+  return Notifications_Event::build_type($type, $action);
 }
 
 /**
@@ -1169,30 +1166,32 @@ function _notifications_send_methods($account = NULL) {
  */
 function notifications_theme() {
   return array(
+  /*
     'notifications_send_intervals_form' => array(
-      'render_element' => 'element',
+      'render element' => 'element',
       'file' => 'notifications.admin.inc',
     ),
+    */
     'notifications_manage_subscriptions' => array(
-      'render_element' => 'form',
+      'render element' => 'form',
       'file' => 'notifications.manage.inc',
     ),
     'notifications_manage_subscriptions_filter_form' => array(
-      'render_element' => 'form',
+      'render element' => 'form',
       'file' => 'notifications.manage.inc',
     ),
     'notifications_table_form' => array(
-      'render_element' => 'form',
+      'render element' => 'form',
       'file' => 'notifications.pages.inc',
     ),
     'notifications_subscription_fields' => array(
-      'render_element' => 'element',
+      'render element' => 'element',
       'file' => 'notifications.pages.inc',
     ),
-    'notifications_subscription_list_links' => array(
-      'render_element' => 'subscriptions',
-      'file' => 'notifications.list.inc',    
-    ),
+    'notifications_admin_table_form' => array(
+      'render element' => 'form',
+      'file' => 'notifications.admin.inc',
+    ),    
   );
 }
 

@@ -289,12 +289,13 @@ function notifications_content_notifications($op) {
       return $types;
 
     case 'event types':
-      $types['node-insert'] = array(
+      $types['node-post'] = array(
         'type' => 'node',
-        'action' => 'insert',
+        'action' => 'post',
         'title' => t('Node creation'),
-        'class' => 'Notifications_Node_Insert_Event',
+        'class' => 'Notifications_Node_Post_Event',
         'template' => 'notifications-event-node-insert',
+        'actions' => array('notifications_content_node_insert_action', 'notifications_content_node_update_action'),
       );
       $types['node-update'] = array(
         'type' => 'node',
@@ -302,6 +303,7 @@ function notifications_content_notifications($op) {
         'class' => 'Notifications_Node_Update_Event',
         'title' => t('Node update'),
         'template' => 'notifications-event-node-update',
+        'actions' => array('notifications_content_node_update_action'),
       );      
       $types['node-comment'] = array(
         'type' => 'node',
@@ -309,6 +311,7 @@ function notifications_content_notifications($op) {
         'Notifications_Node_Comment_Event',
         'title' => t('Node comment'),
         'template' => 'notifications-event-node-comment',
+        'actions' => array('notifications_content_comment_action'),
       );
       return $types;
 
@@ -345,6 +348,102 @@ function notifications_content_notifications($op) {
         'comment' => t('Comment'),
       );
   }
+}
+
+/**
+ * Implements hook_action_info().
+ */
+function notifications_content_action_info() {
+  return array(
+    'notifications_content_node_insert_action' => array(
+      'type' => 'notifications',
+      'label' => t('Send content notifications'),
+      'configurable' => FALSE,
+      //'behavior' => array('changes_property'),
+      'triggers' => array('node_insert'),
+    ),
+    'notifications_content_node_update_action' => array(
+      'type' => 'notifications',
+      'label' => t('Send content notifications'),
+      'configurable' => FALSE,
+      //'behavior' => array('changes_property'),
+      'triggers' => array('node_update'),
+    ),
+    'notifications_content_comment_action' => array(
+      'type' => 'notifications',
+      'label' => t('Send comment notifications'),
+      'configurable' => FALSE,
+      //'behavior' => array('changes_property'),
+      'triggers' => array('comment_insert', 'comment_update'),
+    ),
+  );
+}
+
+/**
+ * Send content notificaitons
+ *
+ * @ingroup actions
+ */
+function notifications_content_node_insert_action($node, $context = array()) {
+  // Just for published nodes
+  if (!empty($node->status)) {
+    notifications_content_node_event('post', $node)->trigger();
+  }
+}
+
+/**
+ * Send content notificaitons
+ *
+ * @ingroup actions
+ */
+function notifications_content_node_update_action($node, $context = array()) {
+  // If not published before, send 'post' event, otherwhise, send 'update' event if published
+  if (!empty($node->status)) {
+    if (empty($node->notifications_content_status)) {
+      notifications_content_node_event('post', $node)->trigger();
+    }
+    else {
+      notifications_content_node_event('update', $node)->trigger();
+    }
+  }
+}
+
+/**
+ * Build node event. We can have 'node-[type]' or plain 'node' events
+ * 
+ * We keep track of the events in this request so we return the same event if tried again
+ * Events are not supossed to be triggered twice, see Notifications_Event::trigger()
+ */
+function notifications_content_node_event($action, $node) {
+  $page = &drupal_static(__FUNCTION__);
+  if (!isset($page[$action][$node->nid])) {
+    if (notifications_event_type('node-' . $node->type . '-' . $action)) {
+      $type = 'node-' . $node->type;
+    }
+    else {
+      $type = 'node';
+    }
+    $page[$action][$node->nid] = notifications_event($type, $action)->add_object('node', $node);
+  }
+  return $page[$action][$node->nid];
+}
+
+/**
+ * Send comment notificaitons
+ *
+ * @ingroup actions
+ */
+function notifications_content_comment_insert_action($node, $context = array()) {
+  
+}
+
+/**
+ * Send comment notificaitons
+ *
+ * @ingroup actions
+ */
+function notifications_content_comment_update_action($node, $context = array()) {
+  
 }
 
 /**

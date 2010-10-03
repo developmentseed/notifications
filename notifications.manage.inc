@@ -159,7 +159,7 @@ function notifications_manage_subscriptions_form($conditions = array()) {
       '#type' => 'tableselect',
       '#header' => $header,
       '#options' => $options,
-      '#empty' => t('No content available.'),
+      '#empty' => t('No subscriptions available.'),
     );
   }
   // Otherwise, use a simple table.
@@ -168,7 +168,7 @@ function notifications_manage_subscriptions_form($conditions = array()) {
       '#theme' => 'table',
       '#header' => $header,
       '#rows' => $options,
-      '#empty' => t('No content available.'),
+      '#empty' => t('No subscriptions available.'),
     );
   }
   $form['pager'] = array('#markup' => theme('pager', array('tags' => NULL)));

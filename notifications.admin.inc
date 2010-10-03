@@ -137,9 +137,10 @@ function notifications_settings_form() {
 /**
  * Send intervals administration
  */
-function notifications_send_intervals_form() {
+function notifications_send_intervals_form($form, &$form_state) {
   // Collect information about digesting methods and print out some help
   // Collect information about building methods and print out some help
+  /*
   $form['build'] = array(
     '#title' => t('Build formats'),
     '#type' => 'fieldset',
@@ -149,25 +150,35 @@ function notifications_send_intervals_form() {
     $build_methods[$type] = $method['name'];
     $rows[] = array($method['name'], $method['description']);    
   }
-  $form['build']['info'] = array('#value' => theme('table', array(), $rows));
-  
+  $form['build']['info'] = array('#markup' => theme('table', array(), $rows));
+  */
   // Build options. Need some complex formatting.
   $units = array(
     60 => t('Minutes'),
     60*60 => t('Hours'), 
     24*60*60 => t('Days'),
   );
-  $form['intervals'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Send intervals'),
-    '#tree' => TRUE,
-    //'#theme' => 'notifications_send_intervals',
-    '#description' => t('To delete an interval, set the time unit and the name empty. If the time is negative, notifications will never be sent.'),
-  );
+
   $intervals = _notifications_send_intervals() + array('new1' => '', 'new2' => '');
   // We need to use different indexes (not time value) as negative ones won't work
   $index = 0;
   $index_name = $time_index = array();
+  $header = array(
+    'time' => t('Time'),
+    'unit' => t('Unit'),
+    'name' => t('Display name'),
+    'default' => t('Default'),
+  );
+  $options = array();
+  $form['intervals'] = array(
+    '#tree' => TRUE,
+    '#type' => 'fieldset',
+    '#title' => t('Send intervals'),
+    '#header' => $header,
+    '#theme' => 'notifications_admin_table_form',
+    '#empty' => t('You need to enable some plug-ins to provide notifications events.'),
+    '#description' => t('To delete an interval, set the time unit and the name empty. If the time is negative, notifications will never be sent.'),
+  );
   foreach ($intervals as $time => $name) {
     // Store index => name mapping
     $index_options[$index] = '';
@@ -191,21 +202,22 @@ function notifications_send_intervals_form() {
       $number = $time;
       $unit = '';
     }
-    $form['intervals'][$index]['time'] = array(
+    $form['intervals']['time'][$index] = array(
       '#default_value' => $number,
       '#type' => 'textfield',
       '#size' => 2,
     );
-    $form['intervals'][$index]['unit'] = array(
+    $form['intervals']['unit'][$index] = array(
       '#type' => 'select',
       '#options' => array('' => '') + $units,
       '#default_value' => $unit,
     );
-    $form['intervals'][$index]['name'] = array(
+    $form['intervals']['name'][$index] = array(
       '#type' => 'textfield',
       '#default_value' => $name,
       '#size' => 40,
     );
+    /*
     $build = notifications_build_method($time);
     $form['intervals'][$index]['build'] = array(
       '#type' => 'select',
@@ -213,19 +225,44 @@ function notifications_send_intervals_form() {
       '#default_value' => $build ? $build['type'] : 'simple',
       '#options' => $build_methods,
     );
+    */
     // Store also index -> time mapping
-    $form['intervals'][$index]['key'] = array('#type' => 'value', '#value' => $time);
+    $form['intervals']['key'][$index] = array('#type' => 'value', '#value' => $time);
     $index++;
   }
-  $form['default'] = array('#type' => 'radios',
+  // Add field for default value
+  $form['intervals']['default'] = array(
+    '#type' => 'radios',
     '#options' => $index_options,
     '#default_value' => $time_index[variable_get('notifications_default_send_interval', 0)],
   );
-  // New row
+
   $form['submit'] = array('#type' => 'submit', '#value' => t('Update'));
   $form['reset'] = array('#type' => 'submit', '#value' => t('Reset to defaults'));
 
   return $form;
+}
+
+/**
+ * Build a table with send intervals
+ */
+function theme_notifications_send_intervals_form($variables) {
+  $element = $variables['element'];
+  $output = ''; //drupal_render($element['digest']);
+  $header = array(array('data' => t('Time'), 'colspan' => 2), t('Display name'), t('Format'), t('Default'));
+  foreach (element_children($element['intervals']) as $key) {
+    $rows[] = array(
+      drupal_render($element['intervals'][$key]['time']),
+      drupal_render($element['intervals'][$key]['unit']),
+      drupal_render($element['intervals'][$key]['name']),
+      drupal_render($element['intervals'][$key]['build']),
+      drupal_render($element['default'][$key]),
+    );  
+  }
+  $element['intervals']['#value'] = theme('table', array('header' => $header, 'rows' =>$rows));
+  //$output .= theme('table', array('header' => $header, 'rows' =>$rows));
+  $output .= drupal_render($element);
+  return $output;
 }
 
 /**
@@ -377,28 +414,6 @@ function notifications_admin_subscriptions_settings_submit($form, &$form_state) 
 }
 
 /**
- * Build a table with send intervals
- */
-function theme_notifications_send_intervals_form($variables) {
-  $element = $variables['element'];
-  $output = ''; //drupal_render($element['digest']);
-  $header = array(array('data' => t('Time'), 'colspan' => 2), t('Display name'), t('Format'), t('Default'));
-  foreach (element_children($element['intervals']) as $key) {
-    $rows[] = array(
-      drupal_render($element['intervals'][$key]['time']),
-      drupal_render($element['intervals'][$key]['unit']),
-      drupal_render($element['intervals'][$key]['name']),
-      drupal_render($element['intervals'][$key]['build']),
-      drupal_render($element['default'][$key]),
-    );  
-  }
-  $element['intervals']['#value'] = theme('table', array('header' => $header, 'rows' =>$rows));
-  //$output .= theme('table', array('header' => $header, 'rows' =>$rows));
-  $output .= drupal_render($element);
-  return $output;
-}
-
-/**
  * Event configuration administration
  * 
  * Will allow to define which events trigger a notification and which ones not
@@ -406,23 +421,66 @@ function theme_notifications_send_intervals_form($variables) {
 function notifications_admin_events_form() {
   $form = array();
   // Compile array from plug-ins and settings
-  if ($events = notifications_event_type()) {
-    $form['notifications_event_enabled']['#tree'] = TRUE;
-    $form['notifications_event_template']['#tree'] = TRUE;
-    // Group event types when they have a parent
-    $tree = notifications_admin_events_build_tree($events);
-    notifications_admin_events_tree_form($tree, $form, 0);
-    $form = system_settings_form($form);
-    $form['#theme'] = 'notifications_table_form';
-    $form['#table_fields'] = array('name', 'notifications_event_enabled', 'notifications_event_template');
-    $form['#table_header'] = array(t('Event type'), t('Enabled'), t('Template'));
-    return $form;
-  } else {
-    $form['warning'] = array('#value' => t('You need to enable some plug-ins to provide notifications events.'));
-    return $form;
-  }  
+  $event_list = notifications_event_type();
+  $template_list = notifications_info('message templates', NULL, 'title');
+
+  $header = array(
+    'event' => t('Event type'),
+    'template' => t('Template'),
+    'triggers' => t('Triggers'),
+  );
+  $options = array();
+  foreach (notifications_event_type() as $type => $event) {
+    $options[$type] = array(
+      'event' => $event['title'],
+      'template' => array(
+        'data' => array(
+          '#type' => 'select',
+          '#options' => $template_list,
+          '#default_value' => $event['template'],
+        )
+      ),
+      'triggers' => implode(', ', notifications_admin_event_triggers($type)),
+    );
+  }
+  $form['events'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $options,
+    '#empty' => t('You need to enable some plug-ins to provide notifications events.'),
+  );
+  return $form; 
 }
 
+/**
+ * Get assigned triggers for event
+ * 
+ * @todo Better coding, get from db?
+ */
+function notifications_admin_event_triggers($type) {
+  static $action_info, $trigger_info;
+  if (!isset($action_info)) {
+    $action_info = module_invoke_all('action_info');
+    // We need to index trigger info by actual trigger key
+    foreach (module_invoke_all('trigger_info') as $type => $type_info) {
+      foreach ($type_info as $key => $key_info) {
+        $trigger_info[$key] = $key_info;
+      }
+    }
+  }
+  $event_triggers = array(); 
+  $event_actions = notifications_event_type($type, 'actions', array());
+  foreach ($event_actions as $action) {
+    foreach ($action_info[$action]['triggers'] as $trigger) {
+      foreach (trigger_get_assigned_actions($trigger) as $trigger_action) {
+        if (in_array($trigger_action['aid'], $event_actions)) {
+          $event_triggers[$trigger] = $trigger_info[$trigger]['label'];
+        }
+      }
+    }
+  }
+  return $event_triggers;
+}
 /**
  * Build event tree
  */
@@ -473,25 +531,28 @@ function notifications_template_list() {
   }
   return $list;
 }
+
 /**
- * Theme subscriptions list
+ * Theme administration form/fieldset as table
  */
-function theme_notifications_form_table($variables) {
-  $element = $variables['element'];
-  $output = '';
-  if ($fields = element_children($element)) {
-    $header = $element['#header'];
-    $rows = array();
-    // The first element determines the number of columns
-    foreach (element_children($element[$fields[key($fields)]]) as $index) {
+function theme_notifications_admin_table_form($variables) {
+  $form = $variables['form'];
+  $default = language_default();
+  $header = $form['#header'];
+  $index = key($header);
+  $rows = array();
+  foreach ($form[$index] as $key => $element) {
+    // Do not take form control structures.
+    if (is_array($element) && element_child($key)) {
       $row = array();
-      foreach ($fields as $key) {
-        $row[] = isset($element[$key][$index]) ? drupal_render($element[$key][$index]) : '';
+      foreach (array_keys($header) as $field) {
+        $row[] = drupal_render($form[$field][$key]);
       }
       $rows[] = $row;
     }
-    $output .= theme('table', array('header' => $header, 'rows' =>$rows));
   }
-  $output .= drupal_render($element);
+  
+  $output = theme('table', array('header' => $header, 'rows' => $rows, 'empty' => $form['#empty']));
+  $output .= drupal_render_children($form);
   return $output;
 }

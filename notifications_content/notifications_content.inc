@@ -40,21 +40,20 @@ class Notifications_Node_Type_Author_Subscription extends Notifications_Subscrip
  * Node events
  */
 class Notifications_Node_Event extends Notifications_Event {
-  
+ 
   /**
-   * Build from node and action
-   * 
-   * @param $action
-   *   Node action: 'insert', 
+   * Get node object
    */
-  public static function build($node, $action) {
-    if ($class = notifications_event_type('node-' . $node->type . '-' . $action, 'class')) {
-      $type = 'node-' . $node->type . '-' . $action;
-    }
-    else if ($class = notifications_event_type('node-' . $action, 'class')) {
-      $type = 'node-' . $action;
-    }
-    $node = notifications_object('node', $node);
+  public function get_node() {
+    return $this->get_object('node');
+  }
+  /**
+   * Trigger node event
+   */
+  public function trigger() {
+    $node = $this->get_node();
+    parent::trigger();
+    watchdog('action', 'Triggered notifications for  @type %title..', array('@type' => node_type_get_name($node), '%title' => $node->title));
   }
 }
 
@@ -131,9 +130,9 @@ class Notifications_Node_Type_Field extends Notifications_Field_Select {
 }
   
 /**
- * Event types
+ * Event types: When a (published) node is created or an existing node is published
  */
-class Notifications_Node_Insert_Event extends Notifications_Node_Event {
+class Notifications_Node_Post_Event extends Notifications_Node_Event {
   public function get_name() {
     return t('New content of type [type-name] has been submitted');
   }

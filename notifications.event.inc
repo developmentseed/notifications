@@ -22,6 +22,7 @@ class Notifications_Event extends Notifications_Entity {
   public $oid;
   // Time the event was produced
   public $created;
+  public $triggered;
   // Notifications in queue linked to this event
   public $counter = 0;
   // Objects for this event
@@ -56,11 +57,23 @@ class Notifications_Event extends Notifications_Entity {
     }
   }
   /**
-   * Build Event Object
+   * Build Event from db object
    */
   public static function build_object($object) {
-    $class = notifications_event_type($object->type, 'class', 'Notifications_Event');
+    $class = self::type_info($object->typekey, 'class', 'Notifications_Event');
     return new $class($object);
+  }
+  /**
+   * Build Event from type and action
+   */
+  public static function build_type($type, $action) {
+    if ($class = self::type_info($type . '-' . $action, 'class')) {
+      return new $class();
+    }
+    else {
+      $class = self::type_info($type, 'class', 'Notifications_Event');
+      return new $class(array('type' => $type, 'action' => $action));
+    }
   }
   /**
    * Get object title
@@ -170,10 +183,16 @@ class Notifications_Event extends Notifications_Entity {
    *
    * @param $object Notifications_Object
    */
-  function add_object($object) {
-    $this->objects[$object->type] = $object;
+  function add_object($type, $value) {
+    return $this->set_object(notifications_object($type, $value));
   }
-
+  /**
+   * Set Notifications object
+   */
+  function set_object($object) {
+    $this->objects[$object->type] = $object;
+    return $this;
+  }
   /**
    * Get event objects
    */
@@ -202,16 +221,21 @@ class Notifications_Event extends Notifications_Entity {
    * Replaces notifications_event_trigger($event)
    */
   function trigger() {
+    // If already been triggered, do't do it again
+    if (!empty($this->triggered)) {
+      return FALSE;
+    }
     // Notify other modules we are about to trigger some subscriptions event
     // Modules can do cleanup operations or modify event properties
-    $this->invoke_all('trigger'); 
+    $this->triggered = REQUEST_TIME;
+    $this->invoke_all('trigger');
     // Store event, unles marked not to be saved 
     if ($this->save) {    
-      $this->save();
+      return $this->save();
     }
     // Send event to queue for subscriptions, unless marked not to
     if ($this->queue) {
-      $this->queue();
+      return $this->queue();
     }
   }
 
@@ -288,39 +312,19 @@ class Notifications_Event extends Notifications_Entity {
   }
   
   /**
-   * Build new event object from array of data
-   * 
-   * Replaces notifications_event_build()
-   * 
-   * @param $params
-   *   Event properties
-   * @param $objects
-   *   Array of event objects (type => $object)
+   * Set parameters
    */
-  public static function create($params, $objects = array()) {
-    global $user, $language;
-    
-    // Fill in event with default values
+  public function set_params($params = array()) {
     $params += array(
-      'uid' => $user->uid,
-      'language' => $language->language,
-      'type' => 'default', // Object/event type
-      'action' => 'default', // Action that happened to the object
+      'uid' => $GLOBALS['user']->uid,
+      'language' => $GLOBALS['language']->language,
     );
-    $params += array('typekey' => $params['type'] . '-' . $params['action']);
-    // Check whether we have to save and queue this event, defaults to yes if not set
-    // If not enabled, do not store nor queue this event, can be changed by plug-in modules
-    $enabled = notifications_event_enabled($params['typekey']);
-    $params += array('save' => $enabled, 'queue' => $enabled);
-    $event = new Notifications_Event($params);
-    foreach ($objects as $type => $object) {
-      $event->add_object($type, $object);
+    foreach ($params as $key => $value) {
+      $this->$field = $value;
     }
-    // Modules can do cleanup operations or modify event properties
-    $event->invoke_all('build');
-    return $event;
+    return $this;
   }
-
+  
   /**
    * Clean up queued events
    * 
