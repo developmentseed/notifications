@@ -37,7 +37,7 @@ function notifications_user_overview($account) {
     $status['interval'] = t('Your default sending interval for new subscriptions is @send_interval', array('@send_interval' => $send_intervals[$interval]));
   }
   
-  $form['status'] = array('#type' => 'item', '#weight' => 10, '#title' => t('Current status'), '#value' => theme('item_list', $status));
+  $form['status'] = array('#type' => 'item', '#weight' => 10, '#title' => t('Current status'), '#markup' => theme('item_list', array('items' => $status)));
   
   // Build shortcut tips
   if (notifications_access_user($account, 'manage')) {
@@ -59,7 +59,7 @@ function notifications_user_overview($account) {
   $tips['cancel'] = l(t('Cancel all your subscriptions'), $link['href'], $link['options']);
   */
   //$output .= theme('item_list', $tips, t('You can'));
-  $form['tips'] = array('#type' => 'item', '#weight' => 20, '#title' => t('You can'), '#value' => theme('item_list', $tips));
+  $form['tips'] = array('#type' => 'item', '#weight' => 20, '#title' => t('You can'), '#markup' => theme('item_list', array('items' => $tips)));
    
   return $form;  
 }
