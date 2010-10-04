@@ -306,25 +306,6 @@ function notifications_ui_block_view($delta = '') {
   return $block;
 }
 
-function notifications_ui_page_options($theme) {
-  notifications_include('object.inc');
-  $objects = array();
-  foreach (notifications_object_page_objects() as $type => $object) {
-    if (notifications_ui_display_options($type, $display, $object)) {
-      $objects[$type] = $object;
-    }
-  }
-  if ($objects && ($subscriptions = notifications_object_page_subscriptions($objects))) {
-    // Filter out not displayable subscription types
-    foreach ($subscriptions as $index => $subscription) {
-      if (!notifications_ui_type_enabled($subscription->type)) {
-        unset($subscriptions[$index]);
-      }
-    }
-    return $subscriptions;
-  }
-}
-
 /**
  * Implementation of hook node_type
  */

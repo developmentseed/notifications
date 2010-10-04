@@ -12,14 +12,14 @@ define('NOTIFICATIONS_CONTENT_PAGER', 20);
  * Implementation of hook_menu_()
  */
 function notifications_content_menu() {
-  $items['admin/messaging/notifications/subscriptions/content'] = array(
+  $items['admin/config/notifications/subscriptions/content'] = array(
     'title' => 'Content',
     'description' => 'Content subscriptions',
     'type' => MENU_LOCAL_TASK,
     'page callback' => 'drupal_get_form',
     'page arguments' => array('notifications_content_settings_form'),
     'access arguments' => array('administer site configuration'),
-    'file' => 'notifications_content.pages.inc',
+    'file' => 'notifications_content.admin.inc',
   );
   // User pages for each subscription type, will be disabled by default
   foreach (notifications_content_notifications('subscription types') as $type => $info) {
@@ -479,37 +479,33 @@ function notifications_content_notifications_object_node($op, $node, $account = 
       // Return available subscription options for this node and this user account
       $options = array();
       // Thread
-      if (notifications_content_type_enabled($node->type, 'thread')) {
-        $options[] = Notifications_Subscription::build_instance('thread')
+      if (notifications_content_type_enabled($node->type, 'content_thread')) {
+        $options[] = Notifications_Subscription::build_instance('content_thread')
           ->set_name(t('This post')) // @todo this name should be in page objects
           ->add_field('node:nid', $node->nid);
       }
       // Content type subscriptions
-      /*
-      if (notifications_content_type_enabled($node->type, 'nodetype')) { 
-        $options[] = array(
-          'name' => t('Posts of type @type', array('@type' => notifications_content_type_name($node->type))),
-          'type' => 'nodetype',
-          'fields' => array('type' => $node->type),
-        );
+
+      if (notifications_content_type_enabled($node->type, 'content_type')) { 
+        $options[] = Notifications_Subscription::build_instance('content_type')
+          ->set_name(t('Posts of type @type', array('@type' => node_type_get_name($node)))) // @todo this name should be in page objects
+          ->add_field('node:type', $node->type);
       }
-      // Node author subscriptions
-      if (notifications_content_type_enabled($node->type, 'author')) {
-        $options[] = array(
-          'name' => t('Posts by @name', array('@name' => _notifications_content_node_username($node))),
-          'type' => 'author',
-          'fields' => array('author' => $node->uid),
-        );
+      if ($node->uid && ($author = user_load($node->uid))) {
+        // Node author subscriptions
+        if (notifications_content_type_enabled($node->type, 'content_author')) {
+          $options[] = Notifications_Subscription::build_instance('content_author')
+            ->set_name(t('Posts by @name', array('@name' => $author->name))) // @todo this name should be in page objects
+            ->add_field('node:uid', $node->uid);        
+        }
+        // Subscribe to content type by author
+        if (notifications_content_type_enabled($node->type, 'content_type_author')) {
+          $options[] = Notifications_Subscription::build_instance('content_type_author')
+            ->set_name(t('@type posts by @name', array('@name' => $author->name, '@type' => node_type_get_name($node)))) // @todo this name should be in page objects
+            ->add_field('node:uid', $node->uid)
+            ->add_field('node:type', $node->type);  
+        }
       }
-      // Subscribe to content type by author
-      if (notifications_content_type_enabled($node->type, 'typeauthor')) {
-        $options[] = array(
-          'name' => t('@type posts by @name', array('@name' => _notifications_content_node_username($node), '@type' => notifications_content_type_name($node->type))),
-          'type' => 'typeauthor',
-          'fields' => array('author' => $node->uid, 'type' => $node->type),
-        );
-      }
-      */
       return $options;
       break;
   }
@@ -560,20 +556,7 @@ function notifications_content_notifications_object_user($op, $user, $account = 
  *   Whether to get only enabled subscription types or all of them
  */
 function _notifications_content_type_options($enabled = TRUE) {
-  if ($types = notifications_subscription_type()) {
-    if ($enabled) {
-      $types = array_intersect_key($types, notifications_subscription_type_enabled());
-    }
-    if ($types) {
-      // Only node subscriptions
-      if ($types = notifications_array_filter($types, array('event_type' => 'node'))) {
-        if ($types = notifications_array_filter($types, array('custom' => TRUE), TRUE)) {
-          return array_map('notifications_format_title_description', $types);
-        }
-      }
-    }
-  }
-  return array();
+  return notifications_subscription_type(NULL, $name);
 }
 
 /**
@@ -701,7 +684,7 @@ function notifications_content_types($subs_type = NULL) {
   // Get list of available node types, all of them will be allowed by default
   $types = array();
 
-  foreach (notifications_content_type_name() as $key => $name) {
+  foreach (node_type_names() as $key => $name) {
     if (notifications_content_type_enabled($key, $subs_type)) {
       $types[$key] = $name;
     }
@@ -711,48 +694,23 @@ function notifications_content_types($subs_type = NULL) {
 }
 
 /**
- * Get list of translated content type names
- */
-function notifications_content_type_name($type = NULL) {
-  static $types;
-  
-  if (!isset($types)) {
-    foreach (node_get_types('names') as $key => $name) {
-      $types[$key] = notifications_translate("type:$key:name", $name , NULL, 'nodetype');
-    }
-  }
- 
-  return $type ? $types[$type] : $types;
-}
-
-/**
  * Get subscription options for this content type
  * 
  * PHP Note: We need to use strict checking for in_array(), http://es.php.net/manual/en/function.in-array.php#91911
  * 
- * @param $type
+ * @param $node_type
  *   Optional content type to return info for, global notifications defaults if none.
- * @param $option
- *   Optional option to return for the given content type or the defaults, defaults to returning all settings for the type.
- * @param $disabled
- *   Check also for globally disabled subscription types
+ * @param $subscription_type
  */
-function notifications_content_type_enabled($type = NULL, $option = NULL, $disabled = FALSE) {
-  $settings = variable_get('notifications_content_type', array());
-  if ($type) {
-    if (!$disabled && !notifications_subscription_type_enabled($type)) {
-      $settings = array();
-    }
-    elseif (variable_get('notifications_content_per_type', 0)) {
-      $settings = variable_get('notifications_content_type_' . $type, $settings);
-    }
+function notifications_content_type_enabled($node_type, $subscription_type = NULL) {
+  if (variable_get('notifications_content_per_type', 0)) {
+    $settings = variable_get('notifications_content_type_' . $type, $settings);
   }
-  elseif (!$disabled) {
-    // Take out globally disabled subscriptions
-    $settings = array_intersect($settings, notifications_subscription_type_enabled());
+  else {
+    $settings = variable_get('notifications_content_type', array());
   }
-  if ($option) {
-    return in_array($option, $settings, TRUE);
+  if ($subscription_type) {
+    return in_array($subscription_type, $settings);
   }
   else {
     // We filter the array to return an empty one when no option enabled

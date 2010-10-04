@@ -8,29 +8,29 @@
 /**
  * Admin settings form
  */
-function notifications_content_settings_form() {
+function notifications_content_settings_form($form, &$form_state) {
   // Build check boxes table with content types x subscription types
   $form['content'] = array(
     '#type' => 'fieldset',
     '#title' => t('Enabled subscription types'),
     '#weight' => -10,
     '#collapsible' => TRUE,
-    '#description' => t('Check the subscription types that will be enabled. You can use the global settings here or set different options for each content type. On this second case these will be the defaults for new content types.'),
+    '#description' => t('Check the subscription types that will be enabled. You can use the global settings here or set different options for each content type.'),
   );
   $form['content']['notifications_content_per_type'] = array(
     '#type' => 'radios',
     '#default_value' => variable_get('notifications_content_per_type', 0),
     '#options' => array(
       t('Use global settings on this page for all content types'),
-      t('Set up for each content type on <a href="@content-type-settings">Administer Content Types</a>.', array('@content-type-settings' => url('admin/content/types'))),
+      t('Set up for each content type on <a href="@content-type-settings">Administer Content Types</a>.', array('@content-type-settings' => url('admin/structure/types'))),
     ),
-  );  
+  );
   $form['content']['notifications_content_type'] = array(
     '#type' => 'checkboxes',
     '#title' => t('Global options'),
-    '#options' => _notifications_content_type_options(),
+    '#options' => node_type_get_names(),
     '#default_value' => variable_get('notifications_content_type', array()),
-    '#description' => t('Define the available subscription types that will be enabled globally'),
+    '#description' => t('Content types for which subscriptions will be enabled.'),
   );
 
   return system_settings_form($form);

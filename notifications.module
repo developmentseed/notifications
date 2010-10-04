@@ -473,7 +473,10 @@ function notifications_subscription($type) {
 }
 
 /**
- * Build a subscriptions list object
+ * Build a subscriptions list collection with this name
+ * 
+ * A new Notifications_Subscription_List will be created if not cached before, 
+ * and we'll invoke hook_notifications_subscription_list($name, $list) to collect subscriptions for this list.
  */
 function notifications_subscription_list($name) {
   $types = &drupal_static(__FUNCTION__);
@@ -489,14 +492,16 @@ function notifications_subscription_list($name) {
 /**
  * Implementation of hook_notifications_subscription_list().
  */
-function notifications_notifications_subscription_list($name, $list) {
+function notifications_notifications_subscription_list($name, $list = NULL) {
   switch ($name) {
     case 'page subscriptions':
+      // Get all subscriptions for the objects available in the current page for the current user
       $account = $GLOBALS['user'];
       if ($objects = module_invoke_all('notifications_subscription', 'page objects')) {
         if ($add = Notifications_Subscription::object_subscriptions($objects, $account)) {
           $list->add($add);
         }
+        $list->set_user($account);
       }
       break;
   }
