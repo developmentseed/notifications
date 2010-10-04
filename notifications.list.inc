@@ -52,6 +52,12 @@ class Notifications_Subscription_List implements Iterator {
     }
   }
   /**
+   * Get number of subscriptions
+   */
+  public function count() {
+    return count($this->subscriptions);
+  }
+  /**
    * Load multiple subscriptions into the list
    */
   function load_multiple($sids = array(), $conditions = array()) {
@@ -162,7 +168,20 @@ class Notifications_Subscription_List implements Iterator {
     return $form;
   }
   /**
-   * Build subscription instance from form submission
+   * Build subscription list instance from object or array of subscriptions
+   */
+  public static function build_list($items) {
+    if (is_a($items, 'Notifications_Subscription_List')) {
+      return $items;
+    }
+    else {
+      $list = new Notifications_Subscription_List();
+      $list->add($items);
+      return $list;
+    }
+  }
+  /**
+   * Build subscription list instance from form submission
    */
   public static function build_from_submission($form, &$form_state) {
     // The subscription object should be here, it may be a subscription type

@@ -49,7 +49,7 @@ function notifications_content_menu() {
     'page arguments' => array('notifications_content_test_template_form'),
     'type' => MENU_LOCAL_TASK,
     'access arguments' => array('administer notifications'),
-    'file' => 'notifications_content.pages.inc',
+    'file' => 'notifications_content.admin.inc',
   );
 */
   return $items;
@@ -220,7 +220,7 @@ function notifications_content_theme() {
   return array(
     'notifications_content_type_settings' => array(
       'arguments' => array('element' => NULL),
-      'file' => 'notifications_content.pages.inc',
+      'file' => 'notifications_content.admin.inc',
     ),
   );  
 }

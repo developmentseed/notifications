@@ -291,7 +291,7 @@ function notifications_ui_block_view($delta = '') {
       }
       break;
     case 'checkboxes':
-      if (($subscriptions = notifications_subscription_list('page subscriptions')) && count($subscriptions)) {
+      if (($subscriptions = notifications_subscription_list('page subscriptions')) && $subscriptions->count()) {
         $block['subject'] = t('Subscriptions');
         $block['content'] = drupal_get_form('notifications_subscription_list_form', 'checkboxes', $subscriptions);
       }

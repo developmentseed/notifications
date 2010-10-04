@@ -1162,46 +1162,38 @@ function notifications_subscription_form($form, &$form_state, $operation, $subsc
  * Validate form submission
  */
 function notifications_subscription_form_validate($form, &$form_state) {
-  return Notifications_Subscription::build_from_submission($form, $form_state)->form_validate($form, $form_state);
+  return Notifications_Subscription::build_from_submission($form, $form_state)
+    ->form_validate($form, $form_state);
 }
 /**
  * Process form submission
  */
 function notifications_subscription_form_submit($form, &$form_state) {
-  return Notifications_Subscription::build_from_submission($form, $form_state)->form_submit($form, $form_state);
+  return Notifications_Subscription::build_from_submission($form, $form_state)
+    ->form_submit($form, $form_state);
 }
 
 /**
  * Form with subscription list
  */
 function notifications_subscription_list_form($form, &$form_state, $type, $subscriptions) {
-  return $subscriptions->get_form($type, $form, $form_state);
+  return Notifications_Subscription_List::build_list($subscriptions)
+    ->get_form($type, $form, $form_state);
 }
 
 /**
  * Validate list form submission
  */
 function notifications_subscription_list_form_validate($form, &$form_state) {
-  return Notifications_Subscription_List::build_from_submission($form, $form_state)->form_validate($form, $form_state);
+  return Notifications_Subscription_List::build_from_submission($form, $form_state)
+    ->form_validate($form, $form_state);
 }
 /**
  * Process list form submission
  */
 function notifications_subscription_list_form_submit($form, &$form_state) {
-  return Notifications_Subscription_List::build_from_submission($form, $form_state)->form_submit($form, $form_state);
-}
-/**
- * Wrapper for l() function with some more options
- */
-function notifications_l($text, $path, $options = array()) {
-  return l($text, $path, notifications_url_options($path, $options));
-}
-
-/**
- * Wrapper for url() function with some more options
- */
-function notifications_url($path, $options = array()) {
-  return url($path, notifications_url_options($path, $options));
+  return Notifications_Subscription_List::build_from_submission($form, $form_state)
+    ->form_submit($form, $form_state);
 }
 
 /**
