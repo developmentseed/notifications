@@ -5,6 +5,7 @@ package = "Notifications"
 version = VERSION
 core = 7.x
 dependencies[] = messaging
+dependencies[] = trigger
 files[] = 'notifications.object.inc'
 files[] = 'notifications.field.inc'
 files[] = 'notifications.message.inc'
