@@ -272,6 +272,8 @@ abstract class Notifications_Field {
     if (!empty($this->subscription)) {
       $this->sid = $this->subscription->sid;
     }
+    // The int value must be set for drupal_write_record
+    $this->intval = (int)$this->get_value();
     return drupal_write_record('notifications_subscription_fields', $this);
   }
   /**

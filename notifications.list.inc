@@ -12,6 +12,8 @@ class Notifications_Subscription_List implements Iterator {
   // The list type will be a unique name identifier, for static caching
   public $type = 'subscriptions';
   public $subscriptions = array();
+  // First index will be 1, will save some problems
+  protected $index = 0;
   // Template for multiple subscriptions of the same type
   public $template;
   // Header for tableselect
@@ -23,7 +25,7 @@ class Notifications_Subscription_List implements Iterator {
   // Parameters common to all instances
   protected $instance_params = array();
   // Index for Iterator
-  private $index = 0;
+  private $iterator_index = 0;
 
   /**
    * Construct with list of subscriptions
@@ -64,11 +66,8 @@ class Notifications_Subscription_List implements Iterator {
    * Add single subscription
    */
   function add_subscription($subscription) {
-    $this->subscriptions[] = $subscription;
-    $this->types[$subscription->type][] = $subscription;
-    if ($subscription->is_instance()) {
-      $this->instances[$subscription->sid] = $subscription;
-    }
+    $this->index++;
+    $this->subscriptions[$this->index] = $subscription;
   }
   /**
    * Get array of subscription / subscription types
@@ -81,12 +80,27 @@ class Notifications_Subscription_List implements Iterator {
    */
   function get_instances() {
     $list = array();
-    foreach ($this->subscriptions as $subscription) {
+    foreach ($this->subscriptions as $index => $subscription) {
       if ($subscription->is_instance()) {
-        $list[] = $subscription;
+        $list[$index] = $subscription->instance();
       }
     }
     return $list;
+  }
+  /**
+   * Load stored instances for subscriptions in the list
+   */
+  function load_instances() {
+    foreach ($this->subscriptions as $key => $subscription) {
+      if (!$subscription->is_stored() && ($stored = $subscription->get_instance())) {
+        // Carry name over to the new one as it may be page specific
+        if (!empty($subscription->name)) {
+          $stored->name = $subscription->name;
+        }
+        $this->subscriptions[$key] = $stored;
+      }
+    }
+    return $this;
   }
   /**
    * Build instances for all with given parameters
@@ -141,10 +155,67 @@ class Notifications_Subscription_List implements Iterator {
    */
   public function get_form($type, $form, &$form_state) {
     $form['type'] = array('#type' => 'value', '#value' => $this);
-    $form['subscriptions'] = array('#type' => 'value', '#value' => $this);
-    $form['list'] = $this->get_elements($type);
+    $form['operation'] = array('#type' => 'value', '#value' => 'update');
+    $form['subscription_list'] = array('#type' => 'value', '#value' => $this);
+    $form['subscriptions'] = $this->get_elements($type);
     $form['save'] = array('#type' => 'submit', '#value' => t('Update'));
     return $form;
+  }
+  /**
+   * Build subscription instance from form submission
+   */
+  public static function build_from_submission($form, &$form_state) {
+    // The subscription object should be here, it may be a subscription type
+    $subscriptions = $form_state['values']['subscription_list'];
+    return $subscriptions;
+  }
+  /**
+   * Validate form
+   * @todo
+   */
+  public function form_validate($form, &$form_state) {
+
+  }
+  /**
+   * Process form submission
+   */
+  public function form_submit($form, &$form_state) {
+    $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : '';
+    if ($op == t('Cancel')) {
+      $operation = 'cancel';
+    }
+    else {
+      $operation = $form_state['values']['operation'];
+    }
+    return $this->form_operation($operation, $form, $form_state);
+  }
+  /**
+   * Form operation
+   */
+  protected function form_operation($operation, $form, &$form_state) {
+    switch ($operation) {
+      case 'cancel':
+        break;
+      case 'update':
+        $options = $form_state['values']['subscriptions'];
+        $subscribe = array_filter($options);
+        $created = $deleted = 0;
+        foreach ($this->subscriptions as $index => $subscription) {
+          $status = in_array($index, $subscribe);
+          if (!$subscription->is_stored() && $status) {
+            $subscription->save();
+            $created++;
+          }
+          elseif ($subscription->is_stored() && !$status) {
+            $subscription->delete();
+            $deleted++;
+          }
+        }
+        if ($created || $deleted) {
+          drupal_set_message(t('The subscriptions have been updated: created @created, deleted @deleted.', array('@created' => $created, '@deleted' => $deleted)));
+        }
+        break;
+    }
   }
   /**
    * Get elements
@@ -190,6 +261,8 @@ class Notifications_Subscription_List implements Iterator {
    */
   function element_checkboxes($element = array()) {
     $options = $defaults = array();
+    // Note: the options array cannot have a 0 key, but we shouldn't have a 0 subscription either
+    // http://api.drupal.org/api/drupal/developer--topics--forms_api_reference.html/6#checkboxes
     foreach ($this->get_instances() as $index => $subscription) {
       $options[$index] = $subscription->get_name();
       if ($subscription->is_stored()) {
@@ -207,27 +280,27 @@ class Notifications_Subscription_List implements Iterator {
    * Implementation of iterator interface
    */
   public function rewind() {
-    $this->index = 0;
+    $this->iterator_index = 0;
   }
   public function current() {
     $k = array_keys($this->subscriptions);
-    return $this->subscriptions[$k[$this->index]];
+    return $this->subscriptions[$k[$this->iterator_index]];
   }
   public function key() {
     $k = array_keys($this->subscriptions);
-    return $k[$this->index];
+    return $k[$this->iterator_index];
   }
   public function next() {
     $k = array_keys($this->subscriptions);
-    if (isset($k[++$this->index])) {
-        return $this->subscriptions[$k[$this->index]];
+    if (isset($k[++$this->iterator_index])) {
+        return $this->subscriptions[$k[$this->iterator_index]];
     } else {
         return false;
     }
   }
   public function valid() {
     $k = array_keys($this->subscriptions);
-    return isset($k[$this->index]);
+    return isset($k[$this->iterator_index]);
   }
 }
 

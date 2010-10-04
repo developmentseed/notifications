@@ -169,12 +169,7 @@ function notifications_ui_form_alter(&$form, $form_state, $form_id) {
         // $output .= theme('item_list', $create, t('or create a new subscription'));
         $form['create'] = array('#type' => 'item', '#weight' => 30, '#title' => t('or create a new subscription'), '#value' => theme('item_list', $create));
       }      
-      break;
-       
-    default: 
-      if (isset($form['type']['#value']) && $form['type']['#value'] .'_node_form' == $form_id && ($subscriptions = notifications_ui_node_subscriptions($form['#node'], 'form'))) {
-        $form = array_merge_recursive($form, notifications_subscriptions_options_subform($subscriptions, FALSE));
-      }  
+      break; 
   }
 }
 
@@ -296,7 +291,7 @@ function notifications_ui_block_view($delta = '') {
       }
       break;
     case 'checkboxes':
-      if ($subscriptions = notifications_subscription_list('page subscriptions') && count($subscriptions)) {
+      if (($subscriptions = notifications_subscription_list('page subscriptions')) && count($subscriptions)) {
         $block['subject'] = t('Subscriptions');
         $block['content'] = drupal_get_form('notifications_subscription_list_form', 'checkboxes', $subscriptions);
       }

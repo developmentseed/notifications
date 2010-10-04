@@ -31,6 +31,8 @@ abstract class Notifications_Subscription extends Notifications_Entity {
 
   // Subscription type
   protected $type;
+  // Result from last operation
+  protected $result;
   // Subscription fields
   protected $fields;
   /**
@@ -93,7 +95,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
       $query->condition($field->get_query_condition($alias));
     }
     // Then build entities
-    if ($sids = $query->execute()->fetchColumn()) {
+    if ($sids = $query->execute()->fetchCol()) {
       return entity_load('notifications_subscription', $sids);
     }
     else {
@@ -103,13 +105,12 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   /**
    * Get all existing instances form the db
    */
-  public function get_instances($params) {
+  public function load_instances($params) {
     $params += array('type' => $this->type);
     // Add all the fields that have a value set (type and instance fields)
     $fields = $this->filter_fields($this->get_fields());
     return $this->load_multiple($params, $fields);
   }
-
   /**
    * Get description
    */
@@ -122,7 +123,6 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Get subscription type object
    */
   public abstract function subscription_type();  
-
   /**
    * Check whether this is a subscription instance or a subscription type
    */
@@ -132,14 +132,19 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   public abstract function is_stored();
   /**
-   * Get instance of this subscription type
+   * Get instance of this subscription / type
    */
   public abstract function instance();
-  
   /**
    * Get fields that are variable for subscription instance
    */
   public abstract function get_instance_fields();
+  /**
+   * Get result from last operation
+   */
+  public function get_result() {
+    return isset($this->result) ? $this->result : TRUE;
+  }
   /**
    * Get type fields, the ones that have a value set for this type
    */
@@ -220,9 +225,9 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     return array(
         '#type' => 'link',
         '#markup' => $this->get_link_text($type),
-        '#title' => $this->get_title(),
+        '#title' => $this->get_name(),
         '#href'  => $path,
-        '#options' => notifications_url_options($path, $options),
+        '#options' => notifications_url_options($path, $options) + array('html' => TRUE),
         '#description' => $this->get_description(),
       );    
   }
@@ -458,7 +463,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $this->set_properties_from_values($form_state['values'], TRUE);
     // There may be optional fields to add
     if ($fields = $this->build_fields_from_submission($form, &$form_state)) {
-      
+      $this->set_fields($fields); 
     }
     return $this;
   }
@@ -490,12 +495,12 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    *   Array of field values indexed by field position
    */
   protected function set_fields_from_values($values = array()) {
-    $result = TRUE;
+    $this->result = TRUE;
     // Set field values, they come in the query string indexed by field position
     foreach ($this->get_editable_fields() as $field) {
       if (isset($values[$field->position])) {
         // Validate (TRUE) and set value
-        $result = $result && $field->set_value($values[$field->position], TRUE);
+        $this->result = $this->result && $field->set_value($values[$field->position], TRUE);
       }
     }
     return $this;
@@ -507,7 +512,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $this->$name = $value;
   }
   /**
-   * Build submitted fields
+   * Build submitted fields (match them with this subscription type fields)
    */
   protected function build_fields_from_submission($form, &$form_state) {
     $fields = array();
@@ -540,7 +545,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   static function object_subscriptions($objects, $account) {
     $subscriptions = new Notifications_Subscription_List();
     foreach ($objects as $object) {
-      if ($more = $object->user_subscriptions($account)) {
+      if ($more = $object->subscribe_options($account)) {
         $subscriptions->add($more);
       }
     }
@@ -552,8 +557,8 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * 
    * A subscription type can override its form elements
    */
-  function field_form_element($field, $title = FALSE, $required = FALSE, $size = 40) {
-    return $field->form_element($title, $required, $size);
+  function field_form_element($field, $element = array()) {
+    return $field->form_element($title, $element);
   }
 
   /**
@@ -624,8 +629,6 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   public static function delete_subscription($sid) {
     db_delete('notifications_subscription')->condition('sid', $sid)->execute();
     db_delete('notifications_subscription_fields')->condition('sid', $sid)->execute();
-    // Delete queued notifications for this subscription
-    notifications_queue()->queue_delete(array('sid' => $sid));
   }
 }
 
@@ -634,7 +637,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
  */
 class Notifications_Subscription_Type extends Notifications_Subscription {
   // Subscription type name
-  public $type;
+  public $type = 'none';
   // Instance class
   public $instance = 'Notifications_Subscription_Instance';
   // Event that triggers this subscription
@@ -643,8 +646,8 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   public $field_types = array();
   // Array of field values
   public $field_values = array();
-  // Array of built field objects
-  public $fields = array();
+  // Array of object types
+  public $object_types = array();
   
   /**
    * This is a subscription type
@@ -745,14 +748,14 @@ class Notifications_Subscription_Type extends Notifications_Subscription {
   }
 
   /**
-   * Set fields
+   * Set the fields for this subscription type (as generic fields to be produced later)
    */
   function set_fields($fields) {
-    if ($fields) {
-      foreach ($fields as $field) {
-        $field->subscription = $this;
-        $this->fields[$field->index] = $field;
-      }
+    $this->field_types = $this->field_values = $this->object_types = array();
+    foreach ($fields as $field) {
+      $this->field_types[] = $field->type;
+      $this->field_values[] = $field->get_value();
+      $this->object_types[] = $field->get_object()->type;
     }
   }
   
@@ -1033,10 +1036,9 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Delete from db
    */
   function delete() {
-    if ($this->is_instance()) {
-      module_invoke_all('notifications_subscription', 'delete', $this);
-      db_query("DELETE FROM {notifications_subscription_fields} WHERE sid = %d", $this->sid);
-      return parent::delete();
+    if ($this->is_stored()) {
+      $this->invoke_all('delete');
+      $this->delete_subscription($this->sid);
     }
   }
   /**
@@ -1360,7 +1362,10 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    */
   function get_instance($params = array(), $return_self = FALSE) {
     $params += array('type' => $this->type);
-    if ($instances = $this->get_instances($params)) {
+    if ($user = $this->get_user()) {
+      $params+= array('uid' => $user->uid);
+    }
+    if ($instances = $this->load_instances($params)) {
       return reset($instances);
     }
     else {
@@ -1420,31 +1425,29 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   }
   
   /**
-   * Get subscription short name.
-   */
-  function get_name($format = self::FORMAT_HTML) {
-    if (!isset($this->name)) {
-      // This subscription doesn't have a name, we'll find something
-      $this->name = $this->format_name($format | self::FORMAT_INLINE);
-    }
-    return $this->name;
-  }
-  /**
    * Get description
    */
   public function get_description($format = self::FORMAT_HTML) {
-    return $this->get_type('description');
+    return $this->subscription_type()->get_description($format);
   }
-  // Get title
+  /**
+   * Get title, from subscription type
+   */
   function get_title() {
-    return $this->get_type('title');
-  }   
+    return $this->subscription_type()->get_title();
+  }
+  /**
+   * Get subscription short name.
+   */
+  function get_name() {
+    return isset($this->name) ? $this->name : $this->subscription_type()->get_name();
+  }
   /**
    * If the subscription type has a name, like custom subscriptions have, that will be the name
    * Otherwise we build the name using fields and values
    */
   function format_name($format = self::FORMAT_PLAIN) {
-    if ($name = $this->get_type('name')) {
+    if ($name = $this->get_name()) {
       return $name;
     }
     else {

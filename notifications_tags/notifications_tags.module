@@ -126,7 +126,7 @@ function notifications_tags_notifications_object_node($op, $node, $account = NUL
       // Get all available subscriptions to current node
       $options = array();
       if (!$account || user_access('subscribe to taxonomy terms', $account)) {
-        $vocabs = notifications_tag_vocabulary_list();
+        $vocabs = notifications_tags_vocabulary_list();
         if (notifications_content_type_enabled($node->type, 'taxonomy') && !empty($node->taxonomy)) {
           foreach ($node->taxonomy as $tid => $term) {
             if (array_key_exists($term->vid, $vocabs)) {

@@ -485,7 +485,6 @@ function notifications_content_notifications_object_node($op, $node, $account = 
           ->add_field('node:nid', $node->nid);
       }
       // Content type subscriptions
-
       if (notifications_content_type_enabled($node->type, 'content_type')) { 
         $options[] = Notifications_Subscription::build_instance('content_type')
           ->set_name(t('Posts of type @type', array('@type' => node_type_get_name($node)))) // @todo this name should be in page objects
@@ -710,7 +709,7 @@ function notifications_content_type_enabled($node_type, $subscription_type = NUL
     $settings = variable_get('notifications_content_type', array());
   }
   if ($subscription_type) {
-    return in_array($subscription_type, $settings);
+    return notifications_subscription_type_enabled($subscription_type) && in_array($subscription_type, $settings);
   }
   else {
     // We filter the array to return an empty one when no option enabled
