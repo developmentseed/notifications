@@ -9,7 +9,7 @@ class Notifications_Taxonomy_Term_Subscription extends Notifications_Subscriptio
   public $field_values = array(NULL);
 
   public function get_title() {
-    return t('Tag subscription');
+    return t('Tag');
   }
 
 }

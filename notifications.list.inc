@@ -12,6 +12,11 @@ class Notifications_Subscription_List implements Iterator {
   // The list type will be a unique name identifier, for static caching
   public $type = 'subscriptions';
   public $subscriptions = array();
+  // Template for multiple subscriptions of the same type
+  public $template;
+  // Header for tableselect
+  public $header;
+  
   protected $instances = array();
   // Array indexed by subscription type
   protected $types = array();
@@ -19,13 +24,12 @@ class Notifications_Subscription_List implements Iterator {
   protected $instance_params = array();
   // Index for Iterator
   private $index = 0;
+
   /**
    * Construct with list of subscriptions
    */
-  public function __construct() {
-    if ($args = func_get_args()) {
-      $this->add($args);
-    }
+  public function __construct($type = 'subscriptions') {
+    $this->type = $type;
   }
   /**
    * Add subscription/s to the list
@@ -45,6 +49,17 @@ class Notifications_Subscription_List implements Iterator {
       }
     }
   }
+  /**
+   * Load multiple subscriptions into the list
+   */
+  function load_multiple($sids = array(), $conditions = array()) {
+    $this->instance_params = $conditions;
+    if ($subs = entity_load('notifications_subscription', $sids, $conditions)) {
+      $this->add($subs);
+    }
+    return $this;
+  }
+
   /**
    * Add single subscription
    */
@@ -187,6 +202,7 @@ class Notifications_Subscription_List implements Iterator {
       '#default_value' => $defaults,
     );
   }
+
   /**
    * Implementation of iterator interface
    */
@@ -215,3 +231,139 @@ class Notifications_Subscription_List implements Iterator {
   }
 }
 
+/**
+ * Loadable collection of subscriptions for tablesel ect
+ */
+class Notifications_Subscription_Table extends Notifications_Subscription_List {
+  public $conditions = array();
+  public $base_path = 'notifications/subscription';
+  public $pager = 50;
+  /**
+   * Set conditions and remove fields if in the header
+   */
+  function set_conditions($conditions = array()) {
+    $this->conditions = $conditions;
+    foreach (array_keys($conditions) as $id) {
+      if (isset($this->header[$id])) {
+        unset($this->header[$id]);
+      }
+    }
+    return $this;
+  }
+  /**
+   * Produce a select table with all these subscriptions
+   */
+  function table_select() {
+    $options = array();
+    foreach ($this->get_subscriptions() as $subscription) {
+      $options[$subscription->sid] = $this->subscription_fields($subscription);
+    }
+    return array(
+      '#type' => 'tableselect',
+      '#header' => $this->get_header(),
+      '#options' => $options,
+      '#empty' => t('No subscriptions available.'),
+    );
+  }
+  /**
+   * Fill in fields for a subscription
+   */
+  function subscription_fields($subs) {
+    
+    
+    $send_methods = messaging_method_info(NULL, 'name');
+    $send_intervals = notifications_send_intervals();
+
+    $fields = array(); 
+    foreach (array_keys($this->header) as $index) {
+      switch ($index) {
+        case 'sid':
+          $value = array(
+            'data' => array(
+              '#type' => 'link',
+              '#title' => $subs->sid,
+              '#href' => $this->base_path . '/' . $subs->sid,
+            ),
+          );
+          break;
+        case 'title':
+          $value = $subs->get_title();
+          break;
+        case 'name':
+          $value = $subs->get_name();
+          break;
+        case 'type':
+          $type_list = notifications_subscription_type(NULL, 'title');
+          $value = $type_list[$subs->type];
+          break;
+        case 'status':
+          $status_list = Notifications_Subscription::status_list();
+          $value = $status_list[$subs->status];
+          break;
+        case 'created':
+          $value  = format_date($subs->created, 'short');
+          break;
+        case 'uid': // User
+          $value = theme('username', array('account' => $subs));
+          break;
+        default:
+          $value = isset($subs->index) ? check_plain($subs->index) : '--';
+          break;
+      }
+      $fields[$index] = $value;
+    }
+    return $fields;
+  }
+  /**
+   * Get query for selection
+   */
+  function query_select() {
+    // Query data with $conditions and filters
+    $query = db_select('notifications_subscription', 's')->extend('PagerDefault')->extend('TableSort');
+    foreach ($this->conditions as $field => $value) {
+      $query->condition('s.' . $field, $value);
+    }
+    $query
+      ->fields('s',array('sid'))
+      ->limit(50)
+      ->orderByHeader($this->header);
+    return $query;
+  }
+  /**
+   * Actually load all the subscriptions
+   */
+  function query_load() {
+    if ($sids = $this->query_select()->execute()->fetchCol()) {
+      $subscriptions = entity_load('notifications_subscription', $sids);
+      $this->add($subscriptions);
+    }
+    return $this;
+  }
+  
+  /**
+   * Set fields as header
+   */
+  function set_header($header = NULL) {
+    if (isset($header)) {
+      $this->header = $header; 
+    }
+    else {
+      $this->header = $this->get_header();
+    }
+    return $this;
+  }
+  /**
+   * Set default header
+   */
+  function get_header() {
+    return isset($this->header) ? $this->header : array(
+      'sid' => array('data' => t('Id'), 'field' => 's.sid'),
+      'type' => array('data' => t('Type'), 'field' => 's.type'),
+      'status' => array('data' => t('Status'), 'field' => 's.status'),
+      'uid' => array('data' => t('User'), 'field' => 's.uid'),
+      'name' => t('Description'),
+      'created' => array('data' => t('Created'), 'field' => 's.created', 'sort' => 'desc'),
+    );    
+  }
+  
+}

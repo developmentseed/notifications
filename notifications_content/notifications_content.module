@@ -21,39 +21,21 @@ function notifications_content_menu() {
     'access arguments' => array('administer site configuration'),
     'file' => 'notifications_content.pages.inc',
   );
-  // User pages, will be disabled by default
-  $items['user/%user/notifications/thread'] = array(
-    'type' => MENU_LOCAL_TASK,
-    'access callback' => FALSE,
-    'title' => 'Thread',
-    'page callback' => 'notifications_user_subscription_list_page',
-    'page arguments' => array('thread', 1),
-    'weight' => 10,
-  );
-  $items['user/%user/notifications/nodetype'] = array(
-    'type' => MENU_LOCAL_TASK,
-    'access callback' => FALSE,
-    'title' => 'Content type',
-    'page callback' => 'notifications_user_subscription_list_page',
-    'page arguments' => array('nodetype', 1),
-    'weight' => 10,
-  );
-  $items['user/%user/notifications/author'] = array(
-    'type' => MENU_LOCAL_TASK,
-    'access callback' => FALSE,
-    'title' => t('Author'),
-    'page callback' => 'notifications_user_subscription_list_page',
-    'page arguments' => array('author', 1),
-    'weight' => 10,
-  );
-  $items['user/%user/notifications/typeauthor'] = array(
-    'type' => MENU_LOCAL_TASK,
-    'access callback' => FALSE,
-    'title' => t('Content type by author'),
-    'page callback' => 'notifications_user_subscription_list_page',
-    'page arguments' => array('typeauthor', 1),
-    'weight' => 10,
-  );
+  // User pages for each subscription type, will be disabled by default
+  foreach (notifications_content_notifications('subscription types') as $type => $info) {
+    if (notifications_subscription_type_enabled($type)) {
+      $items['user/%user/notifications/' . $type] = array(
+        'type' => MENU_LOCAL_TASK,
+        'access callback' => 'notifications_content_user_access',
+        'access arguments' => array(1, $type),
+        'title' => $info['title'],
+        'page callback' => 'notifications_user_subscription_list_page',
+        'page arguments' => array($type, 1),
+        'weight' => 10,
+      );
+    } 
+  }
+/*
   $items['admin/messaging/notifications/events/configure'] = array(
     'title' => 'Configure',
     'type' => MENU_DEFAULT_LOCAL_TASK,
@@ -69,7 +51,15 @@ function notifications_content_menu() {
     'access arguments' => array('administer notifications'),
     'file' => 'notifications_content.pages.inc',
   );
+*/
   return $items;
+}
+
+/**
+ * Check access to user account tab
+ */
+function notifications_content_user_access($account, $type) {
+  return module_exists('notifications_user') && notifications_user_tab_access($account, $type);
 }
 
 /**

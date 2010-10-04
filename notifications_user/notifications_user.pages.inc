@@ -11,22 +11,22 @@
  * We create the page as a form so it can be altered
  * 
  */
-function notifications_user_overview($form_state, $account) {
+function notifications_user_overview($account) {
   $form['account'] = array('#type' => 'value', '#value' => $account);
   
   $path = 'user/' . $account->uid;
   
   // Status, send method, interval
-  $count = db_query("SELECT status, COUNT(*) AS num FROM {notifications_subscription} WHERE uid = %d GROUP BY status", $account->uid);
+  $count = db_query("SELECT status, COUNT(*) AS num FROM {notifications_subscription} WHERE uid = :uid GROUP BY status", array(':uid' => $account->uid));
   $status_list = Notifications_Subscription::status_list();
-  while ($current = db_fetch_object($count)) {
+  while ($current = $count->fetchObject()) {
     $status[$current->status] = t('You have %count @status subscriptions.', array('%count' => $current->num, '@status' => $status_list[$current->status]));
   }
   if (empty($status)) {
     $status['none'] = t('You don\'t have any subscriptions yet.');
   }
-  $send_intervals = notifications_send_intervals();
-  $send_methods = _notifications_send_methods($account);
+  $send_intervals = notifications_send_intervals($account);
+  $send_methods = notifications_send_methods($account);
   if ($method = notifications_user_setting('send_method', $account)) {
     if (isset($send_methods[$method])) {      
       $status['method'] = t('Your default sending method for new subscriptions is @send_method', array('@send_method' => $send_methods[$method]));
@@ -54,9 +54,10 @@ function notifications_user_overview($form_state, $account) {
       $tips['enable'] = l(t('Enable all your subscriptions'), "$path/notifications/update/enable");
     }    
   }
+  /*
   $link = notifications_get_link('unsubscribe', array('uid' => $account->uid, 'destination' => TRUE));
   $tips['cancel'] = l(t('Cancel all your subscriptions'), $link['href'], $link['options']);
-  
+  */
   //$output .= theme('item_list', $tips, t('You can'));
   $form['tips'] = array('#type' => 'item', '#weight' => 20, '#title' => t('You can'), '#value' => theme('item_list', $tips));
    
@@ -97,142 +98,52 @@ function notifications_user_manage_subscriptions($form_state, $account) {
  * @param $fields
  *   Predefined field values for new subscriptions, as type => value array
  */
-function notifications_subscription_list_form($form_state, $subscription_type, $account, $subscriptions = NULL, $fields = array()) {
+function notifications_user_subscription_list_form($form, &$form_state, $type, $account) {
   if (isset($form_state['values']['op']) && $form_state['values']['op'] == t('Delete')) {
     if ($selected = array_filter($form_state['values']['subscriptions']['select'])) {
       $form = notifications_multiple_delete_confirm($form_state, $selected);
       return $form;      
     }
   }
-  notifications_include('object.inc');
   $account = messaging_user_object($account);
+  $substype = notifications_subscription($type);
   $form['account'] = array('#type' => 'value', '#value' => $account);
-
-  // Build a template subscription. These subscriptions should have a unique subscription variable field
-  $template = notifications_build_subscription($subscription_type);
-  $template->set_account($account);
-  $template->set_fields($fields);
-  $form['template'] = array('#type' => 'value', '#value' => $template); 
-  // Print template information: subscription type, description, fixed fields
-  //$form['info'] = $template->form_info();
+  $form['subscription_type'] = array('#type' => 'value', '#value' => $type);
+  
+  // Build a template subscriptions. These subscriptions should have a unique subscription variable field
   $form['info'] = array(
     '#type' => 'item',
-    '#title' => t('@type subscriptions', array('@type' => $template->get_title())),
-    '#description' => $template->get_description(),
+    '#title' => t('@type subscriptions', array('@type' => $substype->get_title())),
+    '#description' => $substype->get_description(),
   );
 
-  // Just allow one field of each type to be editable
-  $editable_fields = array();
-  foreach ($template->get_editable_fields() as $field) {
-    $editable_fields[$field->field] = $field;
-  }
-  $form['editable_fields'] = array('#type' => 'value', '#value' => $editable_fields);
-
-  if (!isset($subscriptions)) {
-    // We get all subscriptions that at least have the given fields, but may have more
-    $subscriptions = notifications_get_subscriptions(array('type' => $subscription_type, 'uid' => $account->uid), $fields, FALSE);
-  }
-  // If we don't have subscriptions and we cannot create new ones, just display a message
-  if (!$subscriptions) {
-    $form['warning']['#value'] = t("There are no subscriptions of this type.");
-  }
-  $form['current_subscriptions'] = array('#type' => 'value', '#value' => $subscriptions);
-  $subscription_list = $subscriptions; 
-  // Add our template to the list, but not to the values in form
-  if ($editable_fields && notifications_access_user_add($account, $subscription_type)) {
-    $subscription_list['new'] = $template;
-  }
-
-  // Prepare other parameters to build the list
-  $send_methods = notifications_send_methods($account);
-  $send_intervals = notifications_send_intervals($account);
-
-  // Build header with selector, fields, send interval, send method if apply
-  $header = array(theme('table_select_header_cell'));
-  $table_fields = array('select');
-  foreach ($editable_fields as $type => $field) {
-    $header[] = notifications_field_format_name($field->field);
-    $table_fields[] = 'field_' . $type;
-  }
-  // Hide Send method, send interval columns if only one
-  if (count($send_intervals)) {
-    $header[] = t('Send interval');
-    $table_fields[] = 'send_interval';
-  }
-  else {
-    $send_intervals = NULL;
-  }
-  if (count($send_methods) > 1) {
-    $header[] = t('Send method');
-    $table_fields[] = 'send_method';
-  }
-  else {
-    $send_methods = NULL;
-  }
-
-  $form['subscriptions'] = array(
-    '#type' => 'fieldset',
-    '#tree' => TRUE,
-    '#theme' => 'notifications_table_form',
-    '#table_header' => $header,
-    '#table_fields' => $table_fields,
-  );
-  // Add our template to the subscription list and
-  $elements = array();
-  foreach ($subscription_list as $key => $subscription) {
-    if ($subscription->is_instance()) {
-      $form['subscriptions']['select'][$key] = array(
-        '#type' => 'checkbox',
-        '#default_value' => FALSE, // All unselected by default
-      );
-    }
-    else {
-      $form['subscriptions']['select']['new'] = array(
-        '#type' => 'submit',
-        '#value' => t('Add'),
-      );
-    }
-    foreach ($editable_fields as $type => $field) {
-      if ($subscription->is_instance()) {
-        $conditions = $subscription->get_conditions();
-        $value = $conditions[$type];
-        $form['subscriptions']['field_' . $type][$key] = array('#value' => notifications_field_format_value($type, $value));
-      }
-      else {
-        // Add new subscription, editable fields
-        $form['subscriptions']['field_' . $type][$key] = notifications_field_form_element($type, NULL, $subscription, FALSE, FALSE, 30);
-      }
-    }
-    if ($send_intervals)
-      $form['subscriptions']['send_interval'][$key] = array(
-      '#type' => 'select',
-      '#options' => $send_intervals,
-      '#default_value' => $subscription->send_interval,
-    );
-    if ($send_methods) {
-      $form['subscriptions']['send_method'][$key] = array(
-        '#type' => 'select',
-        '#options' => $send_methods,
-        '#default_value' => $subscription->send_method,
-      );
-    }
-  }
-  if ($subscriptions) {
+  $subscriptions = new Notifications_Subscription_Table();
+  $subscriptions
+    ->set_header()
+    ->set_conditions(array('uid' => $account->uid, 'type' => $type))
+    ->query_load();
+  $form['subscriptions'] = $subscriptions->table_select();
+  
+  if (count($subscriptions)) {
     $form['operations'] = array(
       '#type' => 'fieldset',
     );
-    $form['operations']['update'] = array('#type' => 'submit', '#value' => t('Update'));
-    $form['operations']['delete'] = array('#type' => 'submit', '#value' => t('Delete'));
-    //$form['operations']['enable'] = array('#type' => 'submit', '#value' => t('Enable'));
-    //$form['operations']['disable'] = array('#type' => 'submit', '#value' => t('Disable'));
+
   }
   return $form;
+}
+
+function notifications_user_subscription_list_operations() {
+  $form['operations']['update'] = array('#type' => 'submit', '#value' => t('Update'));
+  $form['operations']['delete'] = array('#type' => 'submit', '#value' => t('Delete'));
+  //$form['operations']['enable'] = array('#type' => 'submit', '#value' => t('Enable'));
+  //$form['operations']['disable'] = array('#type' => 'submit', '#value' => t('Disable'));  
 }
 
 /**
  * Submit list of subscriptions
  */
-function notifications_subscription_list_form_validate($form, &$form_state) {
+function notifications_user_subscription_list_form_validate($form, &$form_state) {
   $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : NULL;
   switch ($op) {
     case t('Add'):
@@ -269,20 +180,20 @@ function notifications_subscription_list_form_validate($form, &$form_state) {
 /**
  * Submit list of subscriptions
  */
-function notifications_subscription_list_form_submit($form, &$form_state) {
+function notifications_user_subscription_list_form_submit($form, &$form_state) {
   $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : NULL;
   $updated = 0;
   switch ($op) {
     case t('Add'):
       $subscription = notifications_build_subscription($form_state['values']['template']);
       $subscription->add_fields($form_state['values']['parsed_fields']);
-      notifications_subscription_list_form_values($form_state['values']['subscriptions'], $subscription, 'new');
+      notifications_user_subscription_list_form_values($form_state['values']['subscriptions'], $subscription, 'new');
       notifications_submit_subscription($subscription);
       break;
     case t('Update');
       $updated = 0;
       foreach ($form_state['values']['current_subscriptions'] as $key => $subscription) {
-        if (notifications_subscription_list_form_values($form_state['values']['subscriptions'], $subscription)) {
+        if (notifications_user_subscription_list_form_values($form_state['values']['subscriptions'], $subscription)) {
           $subscription->save();
           $updated++;
         }
@@ -301,7 +212,7 @@ function notifications_subscription_list_form_submit($form, &$form_state) {
 /**
  * Extract values from subscription list form
  */
-function notifications_subscription_list_form_values($form_values, $subscription, $key = NULL) {
+function notifications_user_subscription_list_form_values($form_values, $subscription, $key = NULL) {
   $key = isset($key) ? $key : $subscription->sid;
   $values = array();
   foreach (array('send_method', 'send_interval', 'status') as $field) {

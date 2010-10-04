@@ -9,25 +9,40 @@
  * Implementation of hook_menu_()
  */
 function notifications_tags_menu() {
+  $items['admin/config/notifications/subscriptions/tags'] = array(
+    'title' => 'Tags',
+    'description' => 'Options for taxonomy subscriptions',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_tags_admin_settings'),
+    'access arguments' => array('administer notifications'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'notifications_tags.admin.inc',
+  );
   $items['notifications_tags/autocomplete'] = array(
     'title' => 'Autocomplete taxonomy',
     'page callback' => 'notifications_tags_autocomplete',
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
-  // Hidden user account tab
+  // Hidden user account tab, unless notifications_user enabled
   $items['user/%user/notifications/taxonomy'] = array(
     'type' => MENU_LOCAL_TASK,
-    'access callback' => FALSE,
-    'title' => t('Tags'),
+    'title' => 'Tags',     
+    'access callback' => 'notifications_tags_user_access',
+    'access arguments' => array(1, 'taxonomy_term'),
     'page callback' => 'notifications_user_subscription_list_page',
-    'page arguments' => array('taxonomy', 1),
+    'page arguments' => array('taxonomy_term', 1),
     'weight' => 10,
   );
-  
   return $items;
 }
 
+/**
+ * Check access to user account tab
+ */
+function notifications_tags_user_access($account, $type) {
+  return module_exists('notifications_user') && notifications_user_tab_access($account, $type);
+}
 /**
  * Implementation of hook_permission()
  */
@@ -196,41 +211,6 @@ function notifications_tags_term_tid($name, $field = NULL) {
       form_set_error($field, t('Term name not found.'));
     }
   }
-}
-
-/**
- * Implementation of hook_form_alter().
- * 
- * Admin settings form. Omitted taxonomy vocabularies.
- */
-function notifications_tags_form_alter(&$form, $form_state, $form_id) {
-  if ($form_id == 'notifications_content_settings_form') {
-    $vocabularies = taxonomy_get_vocabularies();
-    foreach ($vocabularies as $vocabulary) {
-      $select[$vocabulary->vid] = check_plain($vocabulary->name);
-    }  
-    $form['tags'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Tag subscriptions'),
-      '#collapsible' => TRUE,
-      '#weight' => 0,
-    );
-    $form['tags']['notifications_tags_vocabularies'] = array(
-      '#type'          => 'checkboxes',
-      '#title'         => t('Allowed vocabularies'),
-      '#default_value' => notifications_tags_vocabularies('vid'),
-      '#options'       => $select,
-      '#description'   => t('Select vocabularies to which subscriptions should be <em>allowed</em>.'),
-      '#multiple'      => TRUE,
-    );
-    $form['tags']['notifications_tags_showsubscribed'] = array(
-      '#type'          => 'checkbox',
-      '#title'         => t('Limit the displayed taxonomy terms'),
-      '#default_value' => variable_get('notifications_tags_showsubscribed', 0),
-      '#description'   => t('If checked, the displayed taxonomy terms in User Interface form will be limited to subscribed terms only. When you have too many taxonomy terms causing the Tags tab to run out of memory under Notifications UI, enabling this setting can fix the problem by only displaying the subscribed taxonomy terms. Note that if you enable this setting, you will have to provide your users an alternative way to subscribe to taxonomy items, such as providing links like: notifications/subscribe/%user/taxonomy/tid/%tid . The link will bring up the standard subscription confirmation dialog.'),
-    );
-  }
-
 }
 
 /**

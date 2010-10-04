@@ -75,6 +75,20 @@ function _notifications_queue_send_intervals() {
   );
 }
 
+/**
+ * Implementation of hook_cron()
+ */
+function notifications_queue_cron() {
+  if (variable_get('notifications_process_on_cron', TRUE)) {
+    $results = notifications_queue()
+      ->default_process()
+      ->cron()
+      ->get_results();
+    if ($results) {
+      watchdog('notifications', 'Processed notifications in queue: @rows rows, @messages messages sent, @time milliseconds.', $results);
+    }
+  }
+}
 /*
   $form['general']['notifications_event_immediate'] = array(
     '#title' => t('Immediate sending'),

@@ -14,10 +14,8 @@ function notifications_user_menu() {
   $items['user/%user/notifications'] = array(
     'type' => MENU_LOCAL_TASK,
     'title' => 'Notifications',
-    //'page callback' => 'notifications_page_user_overview',
-    //'page arguments' => array(1),
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_user_overview', 1),
+    'page callback' => 'notifications_user_overview',
+    'page arguments' => array(1),
     'access callback' => 'notifications_user_access',
     'access arguments' => array(1),
     'file' => 'notifications_user.pages.inc',
@@ -27,35 +25,45 @@ function notifications_user_menu() {
     'title' => 'Overview',
     'weight' => -10,
   );  
-  $items['user/%user/notifications/subscriptions'] = array(
+  $items['user/%user/notifications/subscription'] = array(
     'type' => MENU_LOCAL_TASK,
     'title' => 'Subscriptions',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('notifications_user_manage_subscriptions', 1),
     'access callback' => 'notifications_user_access',
-    'access arguments' => array(1, 'manage'),
+    'access arguments' => array(1, 'maintain'),
     'file' => 'notifications_user.pages.inc',
   );
   // Edit subscription under subscriptions tab
-  $items['user/%user/notifications/subscriptions/edit/%notifications_subscription'] = array(
+  $items['user/%user/notifications/subscription/%notifications_subscription'] = array(
     'type' => MENU_LOCAL_TASK,
     'title' => 'Edit subscription',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_subscription_edit_form', 5),
-    'access callback' => 'notifications_subscription_access',
+    'page arguments' => array('notifications_subscription_edit_form', 4),
+    'access callback' => 'notifications_user_subscription_access',
+    'access arguments' => array('edit', 5),
+    'file' => 'notifications_user.pages.inc',
+  );
+  $items['user/%user/notifications/subscription/%notifications_subscription/edit'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Edit subscription',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('notifications_subscription_edit_form', 4),
+    'access callback' => 'notifications_user_subscription_access',
     'access arguments' => array('edit', 5),
     'file' => 'notifications_user.pages.inc',
   );
   // Delete subscription under subscriptions tab
-  $items['user/%user/notifications/subscriptions/delete/%notifications_subscription'] = array(
+  $items['user/%user/notifications/subscription/%notifications_subscription/delete'] = array(
     'type' => MENU_LOCAL_TASK,
     'title' => 'Delete subscription',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('notifications_user_form_unsubscribe_confirm', 5),
-    'access callback' => 'notifications_subscription_access',
+    'page arguments' => array('notifications_user_form_unsubscribe_confirm', 4),
+    'access callback' => 'notifications_user_subscription_access',
     'access arguments' => array('unsubscribe', 5),
     'file' => 'notifications.pages.inc',
   );
+  /*
   $items['user/%user/notifications/update/%'] = array(
     'type' => MENU_CALLBACK,
     'title' => 'Update subscriptions',
@@ -65,6 +73,7 @@ function notifications_user_menu() {
     'access arguments' => array(1, 'maintain'),
     'file' => 'notifications_user.pages.inc',
   );
+  */
   return $items;
 }
 
@@ -89,16 +98,33 @@ function notifications_user_permission() {
  *   - maintain = create / delete
  *   - manage = use the per account administration page
  */
-function notifications_user_access($account, $op = 'maintain') {
-  global $user;
-  
+function notifications_user_access($account, $op = 'maintain') {  
   if (user_access('administer notifications') || user_access('manage all subscriptions')) {
     return TRUE;
   }
   else {
-    return $account->uid && $user->uid == $account->uid &&
+    return $account->uid && $GLOBALS['user']->uid == $account->uid &&
       (($op == 'maintain' && user_access('maintain own subscriptions')) || ($op == 'manage' && user_access('manage own subscriptions')));
   }
+}
+
+/**
+ * Menu access callback for user subscription tabs
+ */
+function notifications_user_tab_access($account, $type) {  
+  if (user_access('administer notifications') || user_access('manage all subscriptions')) {
+    return TRUE;
+  }
+  else {
+    return $account->uid && $GLOBALS['user']->uid == $account->uid &&
+      user_access('maintain own subscriptions') && notifications_subscription($type)->user_access($account);
+  }
+}
+/**
+ * Check user access to subscription
+ */
+function notifications_user_subscription_access($op, $subscription = NULL) {
+
 }
 
 /**
@@ -111,6 +137,14 @@ function notifications_user_forms() {
   return $forms;
 }
 
+/**
+ * Generic user page for a subscription type
+ */
+function notifications_user_subscription_list_page($type, $account) {
+  module_load_include('pages.inc', 'notifications_user');
+  module_load_include('manage.inc', 'notifications'); // Needed for bulk operations ?
+  return drupal_get_form('notifications_user_subscription_list_form', $type, $account);  
+}
 
 /**
  * Main Subscription form builder
