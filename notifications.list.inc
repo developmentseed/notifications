@@ -103,7 +103,7 @@ class Notifications_Subscription_List implements Iterator {
         if (!empty($subscription->name)) {
           $stored->name = $subscription->name;
         }
-        $this->subscriptions[$key] = $stored;
+        $this->subscriptions[$key] = clone $stored;
       }
     }
     return $this;
