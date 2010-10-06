@@ -181,7 +181,15 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Get default options for links
    */
   protected function get_link_options($operation, $options = array()) {
-    return $options + array('base_path' => 'notifications/subscription/' . $operation);
+    $options += array('query' => array(), 'destination' => TRUE, 'base_path' => 'notifications/subscription/' . $operation);
+    // Translate destination option into actual destination
+    if (!empty($options['destination'])) {
+      $destination = isset($_REQUEST['destination']) ? $_REQUEST['destination'] : (isset($_GET['q']) ? $_GET['q'] : '');
+      if ($destination) {
+        $options['query'] += array('destination' => $destination);
+      }
+    }
+    return $options;
   }
   /**
    * Get default link type (susbscribe || unsubscribe)
@@ -202,7 +210,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   /**
    * Subscribe links are ok for instances and types
    */
-  function get_link($type = NULL, $options = array()) {dpm($type);
+  function get_link($type = NULL, $options = array()) {
     $link = $this->element_link($type, $options);
     return drupal_render($link);
   }
@@ -233,7 +241,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    */
   public function element_link($operation = NULL, $options = array()) {
     $type = $this->get_link_type($operation);
-    $options = $options + $this->get_link_options($type, $options);
+    $options += $this->get_link_options($type, $options);
     $path = $this->get_path($type, $options);
     return array(
         '#type' => 'link',
@@ -319,13 +327,14 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     switch ($operation) {
       case 'cancel':
         drupal_set_message(t('Operation cancelled.'), 'warning');
-        return FALSE;
+        $this->result = FALSE;
+        break;
 
       case 'subscribe':
       case 'add':     
       case 'edit':
-        $result = $this->save();
-        switch ($result) {
+        $this->result = $this->save();
+        switch ($this->result) {
           case SAVED_NEW:
             drupal_set_message(t('The subscription has been created.'));
             break;
@@ -335,22 +344,23 @@ abstract class Notifications_Subscription extends Notifications_Entity {
           default:
             drupal_set_message(t('Error saving the subscription.'), 'error');
         }
-        return $result;
+        break;
 
       case 'unsubscribe':
       case 'delete':
-        $result = $this->delete();
-        if ($result) {
+        $this->result = $this->delete();
+        if ($this->result) {
           drupal_set_message(t('The subscription has been removed.'));
         }
         else {
           drupal_set_message(t('Error deleting the subscription.'), 'error');
         }
-        return $result;
+        break;
 
       default:
         drupal_set_message('Operation not implemented yet.', 'warning');
-        return FALSE;
+        $this->result = FALSE;
+        break;
     }
   }
   /**
@@ -364,7 +374,8 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     switch ($operation) {
       case 'subscribe':
         // This case will be editable if not all fields are predefined
-        $editable = count($this->get_fields()) > count($this->filter_fields($this->get_fields()));
+        $fields = $this->get_fields();
+        $editable = count($fields) > count($this->filter_fields($fields));
         break;
       case 'edit':
         $editable = TRUE;
@@ -382,7 +393,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     else {
       $form = $this->get_form_view($operation, $form, $form_state);
     }
-    $form['operation'] = $this->element_operation($operation);
+    $form['controls'] = $this->element_operation($operation);
     // Set destination depending on operation, 
     if (!isset($_REQUEST['destination'])) {
       $form['#redirect'] = isset($destination) ? $destination : variable_get('notifications_frontpage', variable_get('site_frontpage', 'node'));
@@ -499,7 +510,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    * Get operation buttons for form
    */
   public function element_operation($operation) {
-    $elements = array('#type' => 'fieldset');
+    $elements = array('#type' => 'fieldset', '#weight' => 100);
     switch ($operation) {
       case 'subscribe':
       case 'add':
@@ -523,7 +534,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   public static function build_from_submission($form, &$form_state) {
     // The subscription object should be here, it may be a subscription type
     $subscription = $form_state['values']['subscription'];
-    return $subscription->is_instance() ? $subscription : $subscription->get_instance();
+    return $subscription->instance();
   }
   /**
    * Set instance properties from form submission
@@ -1001,7 +1012,6 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
       case 'subscribe':
       case 'add':
         $options += array(
-          'query' => array(),
           'base_path' => 'notifications/subscribe',
           'skip_confirmation' => variable_get('notifications_option_subscribe_links', 0)
         );
@@ -1009,14 +1019,18 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
         foreach ($this->filter_fields($this->get_fields()) as $field) {
           $options['query'][$field->position] = $field->value;
         }
+        break;
       case 'unsubscribe':
-        return $options + array(
+        $options += array(
           'base_path' => 'notifications/unsubscribe',
           'skip_confirmation' => variable_get('notifications_option_unsubscribe_links', 0)
         );     
-      default:
-        return parent::get_link_options($operation, $options);
+        break;
     }
+    $parent = parent::get_link_options($operation, $options) + array('query' => array());
+    $options += $parent;
+    $options['query'] += $parent['query'];
+    return $options;
   }
   /**
    * Get subscribe / unsubscribe text for this
@@ -1303,7 +1317,7 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
    * Get instance fields that don't have a value set for this type
    */
   function get_instance_fields() {
-    $this->set_fields();
+    $this->get_fields();
     $editable = array();
     foreach ($this->subscription_type()->get_instance_fields() as $type_field) {
       // Get current instance field if available, new one (from type) if not

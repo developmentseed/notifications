@@ -254,7 +254,9 @@ abstract class Notifications_Field {
       case 'float':
         return (float)$value;
       case 'string':
-        return (string)$value;  
+        return (string)$value;
+      default:
+        return $value;
     }
   }
   /**
@@ -342,7 +344,7 @@ abstract class Notifications_Field {
     $element += array(
       '#type' => 'item',
       '#title' => $this->get_title(),
-      '#markup' => check_plain($this->get_name()),
+      '#markup' => $this->get_link(),
     );
     return $element;
   }
@@ -417,7 +419,7 @@ abstract class Notifications_Field_Autocomplete extends Notifications_Field {
    * Build a form element to edit this field
    */
   function element_edit($element = array()) {
-    $element = parent::element_edit($element);
+    $element += parent::element_edit($element);
     $element['#default_value'] = $this->autocomplete_value();
     $element['#autocomplete_path'] = $this->autocomplete_path();
     return $element;
@@ -433,20 +435,33 @@ abstract class Notifications_Field_Select extends Notifications_Field {
   /**
    * Build a form element to edit this field
    */
-  function form_edit_element($title = TRUE, $required = FALSE, $size = 40) {
+  function element_edit($element = array()) {
+    $element += array('#required' => TRUE, '#title' => $this->get_title());
     $options = $this->select_options();
     // If not required or not current value, add an empty value at the beginning
-    if (!$required || !isset($this->value)) {
+    if (empty($element['#required'])) {
       $options = array('' => '') + $options;
     }
-    $element = array(
+    $element += array(
       '#type' => 'select',
-      '#size' => $size,
       '#options' => $options,
-      '#default_value' => isset($this->value) ? $this->value : '',
-      '#required' => FALSE
+      '#default_value' => $this->get_value(),
     );
     return $element;
+  }
+  /**
+   * Translate name into options
+   */
+  function get_name() {
+    if (($value = $this->get_value()) && ($options = $this->select_options()) && isset($options[$value])) {
+      return $options[$value];
+    }
+  }
+  /**
+   * Check valid value
+   */
+  function valid_value($value = NULL) {
+    return ($options = $this->select_options()) && isset($options[$value]); 
   }
 }
 
