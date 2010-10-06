@@ -43,42 +43,18 @@ function notifications_page_subscribe($substype) {
  * @param $id
  *   Subscription id or user id, depending on type
  */
-function notifications_page_unsubscribe($type = NULL, $id = NULL) {
-  // Determine subscription and user depending on type
-  if (!$type) {
-    // Go to generic unsubscribe page with some more options
-    return notifications_page_unsubscribe_overview();    
+function notifications_page_unsubscribe($subscription) {
+  $account = $GLOBALS['user'];
+  // If everything is ok and signed to skip confirmation, go ahead
+  if (notifications_check_signature('skip')) {
+    $subscription->delete();
+    drupal_set_message(t('Your subscription has been removed.'));
+    drupal_goto();      
   }
-  elseif ($type == 'subscription' && is_numeric($id) && ($subscription = notifications_load_subscription($id))) {
-    $account = NULL;
-    $owner = $subscription->uid;
-  }
-  elseif ($type == 'user' && is_numeric($id) && ($account = user_load($id)) && $account->uid) {
-    $subscription = NULL;
-    $owner = $account->uid;
-  }
-  
-  // Check permissions and present confirmation form or not depending on parameters
-  if (($account || $subscription) && notifications_page_check_access($owner)) {
-    // Skip confirmation page when requested and the signature is ok
-    if (notifications_page_check_confirmation()) {
-      if ($subscription) {
-        Notifications_Subscription::delete_subscription($subscription->sid);
-        drupal_set_message(t('Your subscription has been removed.'));
-      }
-      elseif ($account) {
-        Notifications_Subscription::delete_multiple(array('uid' => $account->uid));
-        drupal_set_message(t('All your subscriptions have been removed.'));
-      }
-      drupal_goto();
-    } 
-    elseif ($account && !db_result(db_query("SELECT COUNT(*) FROM {notifications_subscription} WHERE uid = %d", $account->uid))) {
-      return t("You don't have any subscription on this site.");
-    }
-    else {
-      // Display confirmation form
-      return drupal_get_form('notifications_form_unsubscribe_confirm', $subscription, $account);
-    }
+  else {
+    // Ask for confirmation
+    drupal_set_title(t('Confirm your subscription'));
+    return drupal_get_form('notifications_form_unsubscribe_confirm', $subscription);
   }
   drupal_access_denied();
 }

@@ -131,7 +131,7 @@ function notifications_manage_subscriptions_form($conditions = array()) {
     // Render an unordered list of operations links.
     $options[$subs->sid]['operations'] = array(
       'data' => array(
-        '#theme' => 'links__node_operations',
+        '#theme' => 'links_node_operations',
         '#links' => $operations,
         '#attributes' => array('class' => array('links', 'inline')),
       ),

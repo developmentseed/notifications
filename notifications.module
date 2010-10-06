@@ -136,11 +136,22 @@ function notifications_menu() {
   );
   // Unsubscribe links This page will need to work with anonymous users
   // The parameter will be a list of sids, separated by commas
+  $items['notifications/unsubscribe'] = array(
+    'title' => 'Unsubscribe',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'notifications_page_unsubscribe_overview',
+    'access callback' => 'notifications_access_unsubscribe',
+    'file' => 'notifications.pages.inc',
+  );
+  // Unsubscribe links This page will need to work with anonymous users
+  // The parameter will be a list of sids, separated by commas
   $items['notifications/unsubscribe/%notifications_subscription'] = array(
     'title' => 'Unsubscribe',
     'type' => MENU_CALLBACK,
     'page callback' => 'notifications_page_unsubscribe',
-    'access callback' => TRUE,
+    'page arguments' => array(2),
+    'access callback' => 'notifications_access_unsubscribe',
+    'page arguments' => array(2),
     'file' => 'notifications.pages.inc',
   );
   // Edit subscription, stand alone page
@@ -149,8 +160,28 @@ function notifications_menu() {
     'title' => 'Edit subscription',
     'page callback' => 'notifications_subscription_edit_page',
     'page arguments' => array(2),
-    'access callback' => 'notifications_subscription_access',
-    'access arguments' => array('edit', 2),
+    'access callback' => 'notifications_access_subscription',
+    'access arguments' => array(2, 'view'),
+    'file' => 'notifications.pages.inc',
+  );
+  // Edit subscription, stand alone page
+  $items['notifications/subscription/%notifications_subscription/edit'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => 'Edit subscription',
+    'page callback' => 'notifications_subscription_edit_page',
+    'page arguments' => array(2),
+    'access callback' => 'notifications_access_subscription',
+    'access arguments' => array(2, 'edit'),
+    'file' => 'notifications.pages.inc',
+  );
+  // Edit subscription, stand alone page
+  $items['notifications/subscription/%notifications_subscription/delete'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => 'Edit subscription',
+    'page callback' => 'notifications_subscription_edit_page',
+    'page arguments' => array(2),
+    'access callback' => 'notifications_access_subscription',
+    'access arguments' => array(2, 'delete'),
     'file' => 'notifications.pages.inc',
   );
   // Some autocomplete callbacks
@@ -173,7 +204,7 @@ function notifications_menu() {
 }
 
 /**
- * Menu access callback for subscribe links
+ * Menu access callback for subscribe links.
  * 
  * More access checking depending on subscription type will be done at the destination page
  */
@@ -187,6 +218,40 @@ function notifications_access_subscribe($substype, $account = NULL) {
       return TRUE; // Signed link
     }
   }
+}
+
+/**
+ * Menu access callback for unsubscribe links.
+ */
+function notifications_access_unsubscribe($subscription = NULL) {
+  $account = $GLOBALS['user'];
+  if (!$subscription) {
+    return user_access('manage own subscriptions');
+  }
+  elseif ($account->uid && $subscription->uid == $account->uid) {
+    return user_access('manage own subscriptions');
+  }
+  elseif (notifications_check_signature()) {
+    return TRUE; // Signed link
+  }
+}
+
+/**
+ * Menu access callback. Access subscription forms for given subscription
+ */
+function notifications_access_subscription($subscription, $op = 'view', $account = NULL) {
+  $account = $account ? $account : $GLOBALS['user'];  
+  if (user_access('administer notifications') || user_access('manage all subscriptions')) {
+    return TRUE;
+  } 
+  switch ($op) {
+    case 'view':
+      return $subscription->uid && ($subscription->uid == $account->uid);
+    case 'edit':
+    case 'unsubscribe':
+      return $subscription->uid && ($subscription->uid == $account->uid) && user_access('maintain own subscriptions');
+  }
+  return FALSE;
 }
 
 /**
@@ -288,24 +353,6 @@ function notifications_access_anonymous() {
  */
 function notifications_subscription_load($sid) {
   return Notifications_Subscription_Instance::load($sid);
-}
-
-/**
- * Menu access callback
- */
-function notifications_subscription_access($op, $subscription, $account = NULL) {
-  global $user;
-
-  $account = $account ? $account : $user;  
-  if (user_access('administer notifications') || user_access('manage all subscriptions')) {
-    return TRUE;
-  } 
-  switch ($op) {
-    case 'edit':
-    case 'unsubscribe':
-      return $subscription->uid && ($subscription->uid == $account->uid) && user_access('maintain own subscriptions');
-  }
-  return FALSE;
 }
 
 /**
