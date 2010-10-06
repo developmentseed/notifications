@@ -79,7 +79,8 @@ function notifications_manage_subscriptions_form($conditions = array()) {
     ->execute()
     ->fetchCol();
   $subscriptions = entity_load('notifications_subscription', $sids);
-  
+
+  $options = array();
   foreach ($subscriptions as $subs) {
     $options[$subs->sid] = array(
       'sid' => array(
@@ -94,60 +95,60 @@ function notifications_manage_subscriptions_form($conditions = array()) {
       'type' => $type_list[$subs->type],
       'status' => $status_list[$subs->status],
       'created' => format_date($subs->created, 'short'),
-    );    
-  }
-  if (isset($header['user'])) {
-    // If not account, this is an admin form for multiple users, print full account and address
-    if ($user = $subs->get_user()) {
-      $username = theme('username', array('account' => $user));
+    );
+    if (isset($header['user'])) {
+      // If not account, this is an admin form for multiple users, print full account and address
+      if ($user = $subs->get_user()) {
+        $username = theme('username', array('account' => $user));
+      }
+      else {
+        // Anonymous subscription, print destination instead
+        $dest = $subs->get_destination();
+        $username = $dest->address_name() . ' ' . l($dest->format_address(FALSE), 'notifications/destination/' . $sub->mdid . '/manage') ;
+      }
+      $options[$subs->sid]['user'] = $username;
     }
-    else {
-      // Anonymous subscription, print destination instead
-      $dest = $sub->get_destination();
-      $username = $dest->address_name() . ' ' . l($dest->format_address(FALSE), 'notifications/destination/' . $sub->mdid . '/manage') ;
+    if (!empty($header['send_method'])) {
+      $options[$subs->sid]['send_method'] = !empty($send_methods[$subs->send_method]) ? $send_methods[$subs->send_method] : $subs->send_method;
     }
-    $options[$subs->sid]['user'] = $username;
-  }
-  if (!empty($header['send_method'])) {
-    $options[$subs->sid]['send_method'] = !empty($send_methods[$subs->send_method]) ? $send_methods[$subs->send_method] : $subs->send_method;
-  }
-  if (!empty($header['send_interval'])) {
-    $options[$subs->sid]['send_interval'] = !empty($send_intervals[$subs->send_interval]) ? $send_intervals[$subs->send_interval] : $subs->send_interval;
-  }
-  // Build a list of all the accessible operations for the current subscription.
-  $operations = array();
-  $operations['edit'] = array(
-    'title' => t('edit'),
-    'href' =>  $base_path . '/' . $subs->sid . '/edit',
-    'query' => $drupal_destination,
-  );
+    if (!empty($header['send_interval'])) {
+      $options[$subs->sid]['send_interval'] = !empty($send_intervals[$subs->send_interval]) ? $send_intervals[$subs->send_interval] : $subs->send_interval;
+    }
+    // Build a list of all the accessible operations for the current subscription.
+    $operations = array();
+    $operations['edit'] = array(
+      'title' => t('edit'),
+      'href' =>  $base_path . '/' . $subs->sid . '/edit',
+      'query' => $drupal_destination,
+    );
 
-  $operations['delete'] = array(
-    'title' => t('delete'),
-    'href' => $base_path . '/' . $subs->sid . '/delete',
-    'query' => $drupal_destination,
-  );
-  if (count($operations) > 1) {
-    // Render an unordered list of operations links.
-    $options[$subs->sid]['operations'] = array(
-      'data' => array(
-        '#theme' => 'links_node_operations',
-        '#links' => $operations,
-        '#attributes' => array('class' => array('links', 'inline')),
-      ),
+    $operations['delete'] = array(
+      'title' => t('delete'),
+      'href' => $base_path . '/' . $subs->sid . '/delete',
+      'query' => $drupal_destination,
     );
-  }
-  elseif (!empty($operations)) {
-    // Render the first and only operation as a link.
-    $link = reset($operations);
-    $options[$subs->sid]['operations'] = array(
-      'data' => array(
-        '#type' => 'link',
-        '#title' => $link['title'],
-        '#href' => $link['href'],
-        '#options' => array('query' => $link['query']),
-      ),
-    );
+    if (count($operations) > 1) {
+      // Render an unordered list of operations links.
+      $options[$subs->sid]['operations'] = array(
+        'data' => array(
+          '#theme' => 'links_node_operations',
+          '#links' => $operations,
+          '#attributes' => array('class' => array('links', 'inline')),
+        ),
+      );
+    }
+    elseif (!empty($operations)) {
+      // Render the first and only operation as a link.
+      $link = reset($operations);
+      $options[$subs->sid]['operations'] = array(
+        'data' => array(
+          '#type' => 'link',
+          '#title' => $link['title'],
+          '#href' => $link['href'],
+          '#options' => array('query' => $link['query']),
+        ),
+      );
+    }
   }
   
   //$form['#theme'] = 'notifications_manage_subscriptions';
@@ -255,18 +256,19 @@ function notifications_manage_subscriptions_form_submit($form, &$form_state) {
 function notifications_manage_subscriptions_build_filter_query($query, $conditions) {
   $filters = notifications_manage_subscriptions_filters();
   // Build query
-  foreach ($_SESSION['subscriptions_overview_filter'] as $index => $filter) {
-    list($key, $value) = $filter;
-    switch ($key) {
-      case 'type':
-      case 'status':
-      case 'send_interval':
-      case 'send_method':
-        $query->condition('s.' . $key, $value);
-        break;
+  if (isset($_SESSION['subscriptions_overview_filter'])) {
+    foreach ($_SESSION['subscriptions_overview_filter'] as $index => $filter) {
+      list($key, $value) = $filter;
+      switch ($key) {
+        case 'type':
+        case 'status':
+        case 'send_interval':
+        case 'send_method':
+          $query->condition('s.' . $key, $value);
+          break;
+      }
     }
   }
-  
 }
 
 /**
