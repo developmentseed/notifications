@@ -165,25 +165,17 @@ function notifications_menu() {
     'file' => 'notifications.pages.inc',
   );
   // Edit subscription, stand alone page
-  $items['notifications/subscription/%notifications_subscription/edit'] = array(
-    'type' => MENU_CALLBACK,
-    'title' => 'Edit subscription',
-    'page callback' => 'notifications_subscription_edit_page',
-    'page arguments' => array(2),
-    'access callback' => 'notifications_access_subscription',
-    'access arguments' => array(2, 'edit'),
-    'file' => 'notifications.pages.inc',
-  );
-  // Edit subscription, stand alone page
-  $items['notifications/subscription/%notifications_subscription/delete'] = array(
-    'type' => MENU_CALLBACK,
-    'title' => 'Edit subscription',
-    'page callback' => 'notifications_subscription_edit_page',
-    'page arguments' => array(2),
-    'access callback' => 'notifications_access_subscription',
-    'access arguments' => array(2, 'delete'),
-    'file' => 'notifications.pages.inc',
-  );
+  foreach (array('view', 'edit', 'delete') as $op) {
+    $items['notifications/subscription/%notifications_subscription/edit'] = array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Edit subscription',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('notifications_subscription_form', $op, 2),
+      'access callback' => 'notifications_access_subscription',
+      'access arguments' => array(2, $op),
+      'file' => 'notifications.pages.inc',
+    );
+  }
   // Some autocomplete callbacks
   $items['notifications/autocomplete/node/title'] = array(
     'title' => 'Node title autocomplete',
@@ -1183,19 +1175,15 @@ function notifications_theme() {
  * Implementation of hook_forms()
  */
 function notifications_forms($form_id, $args) {
-  $forms['notifications_subscription_add_form'] = array(
-    'callback' => 'notifications_subscription_form',
-    'callback arguments' => array('add'),
-  );
-  $forms['notifications_subscription_edit_form'] = array(
-    'callback' => 'notifications_subscription_form',
-    'callback arguments' => array('edit'),
-  );
-  $forms['notifications_subscription_confirm_form'] = array(
-    'callback' => 'notifications_subscription_form',
-    'callback arguments' => array('confirm'),
-  );
-  return $forms;
+  if (strpos($form_id, 'notifications_subscription') === 0) {
+    foreach (array('view', 'edit', 'delete', 'subscribe', 'unsubscribe') as $op) {
+      $forms['notifications_subscription_' . $op . '_form'] = array(
+        'callback' => 'notifications_subscription_form',
+        'callback arguments' => array($op),
+      );
+    }
+    return $forms;
+  }
 }
 
 /**

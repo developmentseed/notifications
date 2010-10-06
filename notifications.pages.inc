@@ -27,7 +27,7 @@ function notifications_page_subscribe($substype) {
     else {
       // Ask for confirmation
       drupal_set_title(t('Confirm your subscription'));
-      return drupal_get_form('notifications_subscription_confirm_form', $subscription);
+      return drupal_get_form('notifications_subscription_subscribe_form', $subscription);
     }
   }
   drupal_set_message(t('Subscription or parameters not allowed.'), 'error');
@@ -53,8 +53,8 @@ function notifications_page_unsubscribe($subscription) {
   }
   else {
     // Ask for confirmation
-    drupal_set_title(t('Confirm your subscription'));
-    return drupal_get_form('notifications_form_unsubscribe_confirm', $subscription);
+    drupal_set_title(t('Delete your subscription'));
+    return drupal_get_form('notifications_subscription_unsubscribe_form', $subscription);
   }
   drupal_access_denied();
 }
@@ -153,21 +153,6 @@ function notifications_page_check_signature() {
  */
 function notifications_page_check_confirmation() {
   return !empty($_GET['confirm']) && notifications_page_check_signature();
-}
-
-/**
- * Edit subscription page that can be accessed with signed link
- */
-function notifications_subscription_edit_page($subscription) {
-  global $user;
-
-  // Aditional checks for anonymous subscriptions so not everybody can access them
-  if (!$subscription->uid && !user_access('administer notifications') && !user_access('manage subscriptions') && !notifications_check_signature()) {
-    drupal_access_denied(); 
-  }
-  else {
-    return drupal_get_form('notifications_subscription_edit_form', $subscription);
-  }
 }
 
 /**

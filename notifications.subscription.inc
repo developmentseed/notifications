@@ -3,6 +3,9 @@
 /**
  * @file
  * Drupal Notifications Framework - Default class file
+ * 
+ * Hidden variables
+ * - notifications_frontpage - Where to redirect after notifications operations, defaults to site_frontpage
  */
 
 /**
@@ -78,7 +81,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
    *   Whether to load all fields in the same operation
    */
   public static function load($sid) {
-    $subscriptions = entity_load('notifications_subscription', $sid);
+    $subscriptions = entity_load('notifications_subscription', array($sid));
     return reset($subscriptions);
   }
   /**
@@ -308,19 +311,31 @@ abstract class Notifications_Subscription extends Notifications_Entity {
       case 'cancel':
         drupal_set_message(t('Operation cancelled.'), 'warning');
         return FALSE;
-      case 'confirm':
+
+      case 'subscribe':
       case 'add':     
       case 'edit':
         $result = $this->save();
         switch ($result) {
           case SAVED_NEW:
-            drupal_set_message(t('Your subscription has been created.'));
+            drupal_set_message(t('The subscription has been created.'));
             break;
           case SAVED_UPDATED;
-            drupal_set_message(t('Your subscription has been updated.'));
+            drupal_set_message(t('The subscription has been updated.'));
             break;
           default:
-            drupal_set_message(t('Error saving your subscription.'), 'warning');
+            drupal_set_message(t('Error saving the subscription.'), 'error');
+        }
+        return $result;
+
+      case 'unsubscribe':
+      case 'delete':
+        $result = $this->delete();
+        if ($result) {
+          drupal_set_message(t('The subscription has been removed.'));
+        }
+        else {
+          drupal_set_message(t('Error deleting the subscription.'), 'error');
         }
         return $result;
 
@@ -331,20 +346,65 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   }
   /**
    * Get form for this subscription
+   * 
+   * @return $form
    */
-  public function get_form($operation, $form, $form_state) {
+  public function get_form($operation, $form, &$form_state) {
     $form['subscription'] = array('#type' => 'value', '#value' => $this);
     $form['operation'] = array('#type' => 'value', '#value' => $operation);
+    switch ($operation) {
+      case 'subscribe':
+        // This case will be editable if not all fields are predefined
+        $editable = count($this->get_fields()) > count($this->filter_fields($this->get_fields()));
+        break;
+      case 'edit':
+        $editable = TRUE;
+        $destination = 'subscription/' . $this->sid;
+        break;
+      case 'unsubscribe':
+      case 'delete':
+      default:
+        $editable = FALSE;
+        break;
+    }
+    if ($editable) {
+      $form = $this->get_form_edit($operation, $form, $form_state);
+    }
+    else {
+      $form = $this->get_form_view($operation, $form, $form_state);
+    }
+    $form['operation'] = $this->element_operation($operation);
+    // Set destination depending on operation, 
+    if (!isset($_REQUEST['destination'])) {
+      $form['#redirect'] = isset($destination) ? $destination : variable_get('notifications_frontpage', variable_get('site_frontpage', 'node'));
+    }
+    return $form;
+  }
+  
+  /**
+   * Get edit form for this subscription
+   */
+  public function get_form_edit($operation, $form, &$form_state) {
     $form['subscription_info'] = $this->element_info();
     $form['send_method'] = $this->element_send_method();
     $form['send_interval'] = $this->element_send_interval();
     if ($fields = $this->get_editable_fields()) {
-      $form['subscription_fields'] = $operation == 'confirm' ? $this->element_fields_info($fields) : $this->element_fields_edit($fields);
+      $form['subscription_fields'] = $this->element_fields_edit($fields);
     }
-    $form['controls'] = $this->element_operation($operation);
     return $form;
   }
-  
+  /**
+   * Get view only form for this subscription
+   */
+  public function get_form_view($operation, $form, &$form_state) {
+    $form['subscription_info'] = $this->element_info();
+    $form['send_method'] = $this->element_send_method();
+    $form['send_interval'] = $this->element_send_interval();
+    if ($fields = $this->get_editable_fields()) {
+      $form['subscription_fields'] = $this->element_fields_info($fields);
+    }
+    return $form;
+  }
   /**
    * Get subscription form info element
    */
@@ -432,14 +492,15 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   public function element_operation($operation) {
     $elements = array('#type' => 'fieldset');
     switch ($operation) {
+      case 'subscribe':
       case 'add':
-      case 'confirm':
         $elements['subscribe'] = array('#type' => 'submit', '#value' => t('Create subscription'));
         break;
       case 'edit':
         $elements['save'] = array('#type' => 'submit', '#value' => t('Save subscription'));
         // no break
       case 'delete':
+      case 'unsubscribe':
         $elements['delete'] = array('#type' => 'submit', '#value' => t('Delete subscription'));
         break;
     }
@@ -1038,7 +1099,10 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   function delete() {
     if ($this->is_stored()) {
       $this->invoke_all('delete');
-      $this->delete_subscription($this->sid);
+      return $this->delete_subscription($this->sid);
+    }
+    else {
+      return FALSE;
     }
   }
   /**
