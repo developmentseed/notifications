@@ -185,14 +185,24 @@ abstract class Notifications_Subscription extends Notifications_Entity {
   }
   /**
    * Get default link type (susbscribe || unsubscribe)
+   * 
+   * 'subscription' type will translate on subscribe/unsubscribe depending on current status
+   * 
+   * @param $type
+   *   Link type.
    */
   protected function get_link_type($type = NULL) {
-    return $type ? $type : ($this->is_stored() ? 'unsubscribe' : 'subscribe');
+    if (!$type || $type == 'subscription') {
+      return $this->is_stored() ? 'unsubscribe' : 'subscribe';
+    }
+    else {
+      return $type;
+    }
   }
   /**
    * Subscribe links are ok for instances and types
    */
-  function get_link($type = NULL, $options = array()) {
+  function get_link($type = NULL, $options = array()) {dpm($type);
     $link = $this->element_link($type, $options);
     return drupal_render($link);
   }
@@ -227,8 +237,7 @@ abstract class Notifications_Subscription extends Notifications_Entity {
     $path = $this->get_path($type, $options);
     return array(
         '#type' => 'link',
-        '#markup' => $this->get_link_text($type),
-        '#title' => $this->get_name(),
+        '#title' => $this->get_link_text($type),
         '#href'  => $path,
         '#options' => notifications_url_options($path, $options) + array('html' => TRUE),
         '#description' => $this->get_description(),
@@ -1015,9 +1024,9 @@ class Notifications_Subscription_Instance extends Notifications_Subscription {
   protected function get_link_text($type, $options = array()) {
     switch ($type) {
       case 'subscribe':
-        return t('Subscribe to: @name', array('@name', $this->get_name()));
+        return t('Subscribe to: @name', array('@name' => $this->get_name()));
       case 'unsubscribe':
-        return t('Unsubscribe from: @name', array('@name', $this->get_name()));
+        return t('Unsubscribe from: @name', array('@name' => $this->get_name()));
       default:
         return parent::get_link_text($type);
     }

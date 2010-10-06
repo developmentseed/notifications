@@ -147,15 +147,49 @@ class Notifications_Subscription_List implements Iterator {
 
   /**
    * Get all subscription links
+   * 
+   * @param $type
+   *   - If 'subscribe', 'unsubscribe' will return just that type of links
+   *   - If 'subscription' will return all subscriptions with either 'subscribe' or 'unsubscribe'
+   *   - Type 'grouped' will return two nested lists: subscribe /unsubscribe
    */
-  public function get_links($options = array()) {
+  public function get_links($type = 'subscription', $options = array()) {
+    if ($type == 'grouped') {
+      $items = array();
+      $groups = array('subscribe' => t('Subscribe to:'), 'unsubscribe' => t('Unsubscribe from:'));
+      foreach ($groups as $group_type => $title) {
+        if ($subscriptions = $this->get_links($group_type)) {
+          $items[] = theme('item_list', array('items' => $subscriptions, 'title' => $title));
+        }
+      }
+      return $items;
+    }
+    if ($type == 'subscribe' || $type == 'unsubscribe') {
+      // Filter out the ones that don't match
+      $subscriptions = $this->get_stored($type == 'unsubscribe');
+    }
+    else {
+      $subscriptions = $this->get_instances();
+    }
     $links = array();
-    foreach ($this->get_instances() as $subscription) {
-      $links[] = $subscription->get_link(NULL, $options);
+    foreach ($subscriptions as $subscription) {
+      $links[] = $subscription->get_link($type, $options);
     }
     return $links;
   }
   
+  /**
+   * Get only existing subscription instances (stored)
+   */
+  function get_stored($stored = TRUE) {
+    $result = array();
+    foreach ($this->get_instances() as $index => $subscription) {
+      if ($subscription->is_stored() == $stored) {
+        $result[$index] = $subscription;
+      }
+    }
+    return $result;
+  }
   /**
    * Get options form
    */
